@@ -1,0 +1,46 @@
+name: Connected Textures CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C++ compiler
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Host tests
+        run: |
+          clang++ -std=c++20 -Imod/src mod/tests/host_test.cpp -o /tmp/ctm-host-test
+          /tmp/ctm-host-test unit
+      - name: Python syntax
+        run: python3 -m compileall -q converter tools mod/package.py
+  build:
+    needs: test
+    if: ${{ vars.PRELOADER_HEADERS_REPO != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch Preloader headers
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.PRELOADER_HEADERS_REPO }}
+          path: preloader-android
+      - name: Build ARM64 library
+        working-directory: mod
+        env:
+          NDK: ${{ env.ANDROID_NDK_HOME }}
+          PL: ${{ github.workspace }}/preloader-android/include
+        run: |
+          export NDK="${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}"
+          sh build.sh
+          python3 package.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ConnectedTextures-levipack
+          path: mod/build/ConnectedTextures.levipack
