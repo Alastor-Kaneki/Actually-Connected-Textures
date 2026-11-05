@@ -1,0 +1,21 @@
+# build output
+build/
+.gradle/
+.kotlin/
+local.properties
+*.iml
+.idea/
+__pycache__/
+*.pyc
+.deps/
+dist/
+out/
+
+# signing keys: never commit these (this repo is public). CI reads them from secrets.
+*.jks
+*.keystore
+keystore.properties
+
+# resource packs (Java originals and converted .mcpack files) belong to their authors
+packs/
+*.mcpack
