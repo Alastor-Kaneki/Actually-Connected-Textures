@@ -134,6 +134,18 @@ class FusionTest(unittest.TestCase):
         base=Image.open(io.BytesIO(files['textures/blocks/ctm/base/fixture_glass.png']))
         self.assertEqual(base.getpixel((0,0)),(1,2,3,255))
 
+    def test_model_only_diagnostics_and_optifine_default_guard(self):
+        pack,_=base_pack()
+        pack.files={'pack.mcmeta':b'{}', 'assets/example/models/item/test.json':b'{"loader":"fusion:model","type":"unknown"}'}
+        log=[]
+        self.assertEqual(fusion.read_rules(pack,log),[])
+        self.assertTrue(any('item/entity/custom' in x for x in log))
+        pack,_=base_pack()
+        pack.files['assets/minecraft/optifine/ctm/glass/a.properties']=b'matchBlocks=glass\nmethod=fixed\ntiles=<default>'
+        result,_=outputs(pack)
+        self.assertEqual(result['blocks'],{'glass':'ctm-8x6-47'})
+        self.assertTrue(any('missing tile' in x for x in result['log']))
+
     def test_nested_zip_and_legacy_full_square(self):
         pack,_=base_pack('full')
         atlas=Image.new('RGBA',(32,32),(0,0,0,0));a=Image.open(io.BytesIO(pack.files['assets/minecraft/textures/block/glass.png']));atlas.paste(a)

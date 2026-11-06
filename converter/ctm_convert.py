@@ -279,7 +279,10 @@ def read_rules(pack: JavaPack, log: list[str]) -> list[Rule]:
 
 
 def java_main_texture_image(pack: JavaPack, block: str):
-    data = pack.get(f"assets/minecraft/textures/block/{main_java_texture(block)}.png")
+    path = f"assets/minecraft/textures/block/{main_java_texture(block)}.png"
+    if fusion.has_fusion(pack.get(path + ".mcmeta") or b"{}"):
+        return None  # A Fusion sheet is never an OptiFine default/base tile.
+    data = pack.get(path)
     return load_image(data) if data else None
 
 

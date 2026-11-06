@@ -36,7 +36,8 @@ internal object Fusion {
         return "assets/$ns/$kind/$name" + if (kind == "textures") ".png" else ".json"
     }
     private data class Model(val textures: Map<String,String>, val faces: Map<String,String>, val predicate: JsonElement?)
-    private fun model(pack: JavaPack, path: String, seen: Set<String> = emptySet()): Model {
+    private fun model(pack: JavaPack, path: String, visited: MutableSet<String>, seen: Set<String> = emptySet()): Model {
+        visited += path
         require(path !in seen && seen.size < 32) { "cyclic or excessive model inheritance" }
         val bytes = pack.get(path)
         if (bytes == null) {
@@ -54,7 +55,7 @@ internal object Fusion {
         val extra = (doc.keys - setOf("loader","type","parent","textures","connections","elements","ambientocclusion","display","gui_light")).sorted()
         require(extra.isEmpty()) { "unsupported Fusion model fields: ${extra.joinToString(", ")}" }
         require(doc.str("loader", "fusion:model") == "fusion:model" && doc.str("type", "connecting") in setOf("connecting","fusion:connecting")) { "unsupported model loader/type" }
-        val parent = if ("parent" in doc) model(pack, resource(doc.str("parent"), "models"), seen + path) else Model(emptyMap(),emptyMap(),null)
+        val parent = if ("parent" in doc) model(pack, resource(doc.str("parent"), "models"), visited, seen + path) else Model(emptyMap(),emptyMap(),null)
         val tex = parent.textures.toMutableMap()
         val textures = if ("textures" in doc) doc["textures"] as? JsonObject ?: error("model textures must be string references") else JsonObject(emptyMap())
         for ((k,v) in textures) tex[k] = v.str() ?: error("model textures must be string references")
@@ -117,6 +118,7 @@ internal object Fusion {
         }
         val rules = arrayListOf<Rule>()
         val used = hashSetOf<String>()
+        val visitedModels = hashSetOf<String>()
         for (block in targets) {
             var path = "assets/minecraft/models/block/$block.json"
             val statePath = "assets/minecraft/blockstates/$block.json"
@@ -131,13 +133,14 @@ internal object Fusion {
                     path = resource(v.str("model"), "models")
                 }
                 if (block !in cubes) {
+                    visitedModels += path
                     require(pack.get(path)?.toString(Charsets.UTF_8)?.contains("fusion:model") != true) { "only known vanilla full-cube blocks are supported" }
                     continue
                 }
                 val byTexture = linkedMapOf<String,MutableSet<String>>()
                 var pred: JsonElement? = null
                 if (pack.get(path) != null) {
-                    val m = model(pack,path)
+                    val m = model(pack,path,visitedModels)
                     pred = m.predicate
                     for ((face,ref) in m.faces) byTexture.getOrPut(resolve(ref,m.textures)) { linkedSetOf() }.add(face)
                 } else if (pack.get(statePath) != null) error("blockstate references a missing model")
@@ -150,6 +153,10 @@ internal object Fusion {
                     used += texture
                 }
             } catch(e: Exception) { log += "skip $path: ${e.message}" }
+        }
+        for ((path,data) in pack.files.toSortedMap()) {
+            if ("/models/" in path && path.endsWith(".json") && data.toString(Charsets.UTF_8).contains("fusion:model") && path !in visitedModels)
+                log += "skip $path: no supported vanilla full-cube model binding; item/entity/custom models are unsupported"
         }
         for (texture in (metas.keys - used).sorted()) log += "skip $texture.mcmeta: no supported full-cube model/texture binding"
         return rules

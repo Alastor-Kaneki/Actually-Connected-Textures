@@ -127,6 +127,18 @@ class FusionTest {
         assertFalse("textures/blocks/glass.png" in r.files)
         assertEquals(0xff010203.toInt(),Png.decode(r.files.getValue("textures/blocks/ctm/base/fixture_glass.png"))[0,0])
     }
+    @Test fun modelOnlyDiagnosticsAndOptifineDefaultGuard() {
+        val p=JavaPack.fromEntries(mapOf("assets/example/models/item/test.json" to """{"loader":"fusion:model","type":"unknown"}""".toByteArray()))
+        assertTrue(p.ctmRuleCount>0)
+        val log=mutableListOf<String>()
+        assertTrue(Fusion.readRules(p,log).isEmpty())
+        assertTrue(log.any {"item/entity/custom" in it})
+        val(glass,_)=synthetic("pieced")
+        val files=glass.files+("assets/minecraft/optifine/ctm/glass/a.properties" to "matchBlocks=glass\nmethod=fixed\ntiles=<default>".toByteArray())
+        val result=Converter.convert(JavaPack.fromEntries(files),ConvertOptions(name="Test"))
+        assertEquals(mapOf("glass" to "ctm-8x6-47"),result.blocks)
+        assertTrue(result.log.any {"missing tile" in it})
+    }
     @Test fun malformedMetadataAndUnsupportedPredicatesDoNotSilentlyConvert() {
         for(meta in listOf("null","{\"type\":\"connecting\",\"layout\":[\"pieced\"]}","{\"type\":\"connecting\",\"connections\":{\"type\":\"is_same_state\"}}","{\"type\":\"connecting\",\"emissive\":true}")) {
             val(p,_)=synthetic("pieced")

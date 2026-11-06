@@ -85,7 +85,10 @@ def read_rules(pack, log):
         except (ValueError, UnicodeError, TypeError) as e:
             log.append(f'skip {p}.mcmeta: {e}')
 
+    visited_models = set()
+
     def model(path, seen=()):
+        visited_models.add(path)
         if path in seen or len(seen) >= 32:
             raise ValueError('cyclic or excessive model inheritance')
         if path not in pack.files:
@@ -175,6 +178,7 @@ def read_rules(pack, log):
             if block not in CUBES:
                 # Avoid advertising arbitrary texture names or non-cube geometry as blocks.
                 if path in pack.files and b'fusion:model' in pack.files[path]:
+                    visited_models.add(path)
                     raise ValueError('only known vanilla full-cube blocks are supported')
                 continue
             if path in pack.files:
@@ -200,6 +204,9 @@ def read_rules(pack, log):
                 used.add(texture)
         except (ValueError, TypeError, UnicodeError) as e:
             log.append(f'skip {path}: {e}')
+    for path, data in sorted(pack.files.items()):
+        if "/models/" in path and path.endswith(".json") and b"fusion:model" in data and path not in visited_models:
+            log.append(f"skip {path}: no supported vanilla full-cube model binding; item/entity/custom models are unsupported")
     for texture in sorted(set(metas) - used):
         log.append(f'skip {texture}.mcmeta: no supported full-cube model/texture binding')
     return rules

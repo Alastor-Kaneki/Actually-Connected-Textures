@@ -302,7 +302,7 @@ object Converter {
                 val connect = (props["connect"] ?: "block").lowercase()
                 if (connect != "block" && connect != "") log += "note $path: connect=$connect is treated as connect=block"
                 val innerSeams = (props["innerSeams"] ?: "false").lowercase() == "true"
-                val basePath = blocks.firstOrNull()?.let { mainTexturePath(it) }?.takeIf { has(it) }
+                val basePath = blocks.firstOrNull()?.let { mainTexturePath(it) }?.takeIf { it !in fusionPaths && has(it) }
                 val toks = expandTileList(props["tiles"] ?: "")
                 val tiles = toks.map { resolveTile(ruleDir, namespace, it, basePath) }
                 if (tiles.isEmpty() || tiles.any { it == null }) {
@@ -362,7 +362,7 @@ object Converter {
                     null
                 }
                 "top" -> {
-                    val base = rule.blocks.firstOrNull()?.let { mainTexturePath(it) }?.takeIf { has(it) }
+                    val base = rule.blocks.firstOrNull()?.let { mainTexturePath(it) }?.takeIf { it !in fusionPaths && has(it) }
                     if (base == null) {
                         log += "skip ${rule.path}: 'top' needs the block's own texture in the pack"
                         null
