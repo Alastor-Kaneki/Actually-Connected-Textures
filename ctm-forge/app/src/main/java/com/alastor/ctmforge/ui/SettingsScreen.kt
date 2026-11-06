@@ -181,8 +181,8 @@ fun SettingsScreen(vm: AppViewModel, padding: PaddingValues) {
                 headlineContent = { Text("CTM Forge ${BuildConfig.VERSION_NAME}") },
                 supportingContent = {
                     Text(
-                        "Build ${BuildConfig.VERSION_CODE}. Converts Java Edition OptiFine / Continuity connected-texture packs " +
-                            "into Bedrock packs for the Connected Textures mod.",
+                        "Build ${BuildConfig.VERSION_CODE}. Converts Java Edition OptiFine / Continuity / Fusion connected-texture " +
+                            "packs, animated blocks included, into Bedrock packs for the Connected Textures mod.",
                     )
                 },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),

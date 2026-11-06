@@ -1,5 +1,8 @@
 package com.alastor.ctmforge.core
 
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.security.MessageDigest
@@ -10,35 +13,117 @@ import java.util.zip.ZipInputStream
  * A Java Edition resource pack loaded into memory: path -> bytes, relative to the folder
  * that holds pack.mcmeta (so packs inside mod jars or sub-folders work too).
  */
-class JavaPack private constructor(val files: Map<String, ByteArray>, val root: String) {
+class JavaPack private constructor(val files: Map<String, ByteArray>, val root: String, val overlays: List<String>) {
 
     fun get(path: String): ByteArray? = files[path]
 
+    /** OptiFine/MCPatcher CTM rule files. */
     val ctmRuleCount: Int
         get() = files.keys.count { isCtmRule(it) }
+
+    /** Fusion connecting, random and continuous textures. */
+    val fusionTextureCount: Int by lazy {
+        files.keys.count { p ->
+            p.startsWith("assets/") && p.endsWith(".png.mcmeta") && files.containsKey(p.removeSuffix(".mcmeta")) &&
+                ((parseJson(files[p]) as? JsonObject)?.get("fusion") as? JsonObject)
+                    ?.let { Fusion.type(it) in setOf("connecting", "random", "continuous") } == true
+        }
+    }
+
+    /** Animated block textures (.mcmeta animations, Fusion scrolling) that exist on Bedrock. */
+    val animatedTextureCount: Int by lazy {
+        files.keys.count { p ->
+            val m = BLOCK_TEXTURE.matchEntire(p) ?: return@count false
+            val meta = parseJson(files["$p.mcmeta"]) as? JsonObject ?: return@count false
+            val f = meta["fusion"] as? JsonObject
+            val animated = if (f != null && Fusion.type(f) in setOf("connecting", "random", "continuous")) false
+            else meta["animation"] is JsonObject || (f != null && Fusion.type(f) == "scrolling")
+            val target = if (m.groupValues[1] == "blocks") "textures/blocks/${m.groupValues[2]}".takeIf { it in Bedrock.pathTiles }
+            else Bedrock.javaTexturePath(m.groupValues[2])
+            animated && target != null && Bedrock.pathTiles[target] != null
+        }
+    }
+
+    /** Everything a conversion can turn into connected or animated textures. */
+    val convertibleCount: Int get() = ctmRuleCount + fusionTextureCount + animatedTextureCount
 
     companion object {
         /** Upper bound for the unpacked size of a pack, to keep zip bombs out. */
         const val MAX_TOTAL_BYTES = 400L * 1024 * 1024
 
+        /** A pack format of the Java versions these packs are made for (to pick pack.mcmeta overlays). */
+        const val CURRENT_FORMAT = 99
+
+        private val BLOCK_TEXTURE = Regex("assets/minecraft/textures/(block|blocks)/([a-z0-9_]+)\\.png")
+        private val OVERLAY_DIR = Regex("[A-Za-z0-9_\\-./]+")
+
         fun isCtmRule(path: String) =
             path.endsWith(".properties") && Regex("assets/[^/]+/(optifine|mcpatcher)/ctm/.*").matches(path)
 
-        fun fromEntries(all: Map<String, ByteArray>): JavaPack {
+        /** macOS metadata that zip tools add next to the real files. */
+        fun junk(path: String): Boolean {
+            val parts = path.split('/')
+            val last = parts.last()
+            return parts[0] == "__MACOSX" || last.startsWith("._") || last == ".DS_Store"
+        }
+
+        fun fromEntries(all0: Map<String, ByteArray>): JavaPack {
+            val all = all0.filterKeys { !junk(it) }
             val roots = all.keys.filter { it == "pack.mcmeta" || it.endsWith("/pack.mcmeta") }
                 .map { it.removeSuffix("pack.mcmeta") }
                 .sortedWith(compareBy<String> { it.length }.thenBy { it })
             val root = roots.firstOrNull() ?: ""
             val files = LinkedHashMap<String, ByteArray>()
             for ((k, v) in all) if (k.startsWith(root)) files[k.substring(root.length)] = v
-            return JavaPack(files, root)
+            val applied = applyOverlays(files)
+            return JavaPack(files, root, applied)
         }
 
-        /** Files a conversion can use; everything else (sounds, models, classes...) is skipped. */
+        /** Fusion's overrides folder and pack.mcmeta overlays that current Java versions load. */
+        private fun applyOverlays(files: LinkedHashMap<String, ByteArray>): List<String> {
+            val meta = parseJson(files["pack.mcmeta"]) as? JsonObject ?: return emptyList()
+            val dirs = ArrayList<String>()
+            val entries = (meta["overlays"] as? JsonObject)?.get("entries")
+            if (entries is JsonArray) for (e in entries) {
+                if (e is JsonObject && e["directory"].str() != null && overlayApplies(e)) dirs += e["directory"].str()!!
+            }
+            (meta["fusion"] as? JsonObject)?.get("overrides_folder").str()?.let { dirs += it }
+            val applied = ArrayList<String>()
+            for (d0 in dirs) {
+                val d = d0.trim('/')
+                if (d.isEmpty() || !OVERLAY_DIR.matches(d)) continue
+                val prefix = "$d/"
+                val moved = LinkedHashMap<String, ByteArray>()
+                for ((k, v) in files) if (k.startsWith(prefix + "assets/")) moved[k.substring(prefix.length)] = v
+                if (moved.isNotEmpty()) {
+                    applied += d
+                    files.putAll(moved)
+                }
+            }
+            return applied
+        }
+
+        private fun overlayApplies(e: JsonObject): Boolean {
+            fun first(v: JsonElement?): Int? = if (v is JsonArray && v.isNotEmpty()) asInt(v[0]) else asInt(v)
+            var lo: Int? = null
+            var hi: Int? = null
+            when (val f = e["formats"]) {
+                is JsonArray -> if (f.size == 2) { lo = asInt(f[0]); hi = asInt(f[1]) }
+                is JsonObject -> { lo = asInt(f["min_inclusive"]); hi = asInt(f["max_inclusive"]) }
+                else -> asInt(f)?.let { lo = it; hi = it }
+            }
+            if ("min_format" in e || "max_format" in e) { lo = first(e["min_format"]); hi = first(e["max_format"]) }
+            if (lo == null && hi == null) return false
+            return (lo == null || lo!! <= CURRENT_FORMAT) && (hi == null || hi!! >= CURRENT_FORMAT)
+        }
+
+        /** Files a conversion can use; everything else (sounds, classes...) is skipped. */
         fun useful(path: String): Boolean {
+            if (junk(path)) return false
             val p = path.lowercase()
             return p.endsWith(".png") || p.endsWith(".properties") || p.endsWith(".mcmeta") || p.endsWith(".zip") ||
-                p.endsWith("manifest.json")
+                p.endsWith("manifest.json") ||
+                (p.endsWith(".json") && ("/models/" in p || "/blockstates/" in p))
         }
 
         /** Reads the files of a zip (or jar) into memory, with sanitised paths. */
@@ -64,7 +149,7 @@ class JavaPack private constructor(val files: Map<String, ByteArray>, val root: 
 
         /**
          * All packs found in a download: the zip itself, plus packs nested one level deep
-         * (some sites wrap the real pack zip in another zip). Ordered by CTM rule count.
+         * (some sites wrap the real pack zip in another zip). Ordered by what they can convert.
          */
         fun candidates(zipBytes: ByteArray, name: String): List<Candidate> {
             val entries = readZip(ByteArrayInputStream(zipBytes), ::useful)
@@ -88,7 +173,7 @@ class JavaPack private constructor(val files: Map<String, ByteArray>, val root: 
                 }
             }
             return found.distinctBy { it.label + "|" + it.pack.root + "|" + it.pack.files.size }
-                .sortedByDescending { it.pack.ctmRuleCount }
+                .sortedByDescending { it.pack.convertibleCount }
         }
     }
 

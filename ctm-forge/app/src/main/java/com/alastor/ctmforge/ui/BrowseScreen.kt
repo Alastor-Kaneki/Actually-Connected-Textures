@@ -107,7 +107,7 @@ private fun SitePane(vm: AppViewModel, site: WebSite, modifier: Modifier) {
             NoticeCard(
                 icon = Icons.Rounded.Lightbulb,
                 title = "Tap a pack's download button",
-                text = "Look for Java packs made for OptiFine or Continuity. CTM Forge catches the download and converts it.",
+                text = "Look for Java packs made for OptiFine, Continuity or Fusion. CTM Forge catches the download and converts it.",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 actions = { TextButton(onClick = { showTip = false }) { Text("Got it") } },
             )

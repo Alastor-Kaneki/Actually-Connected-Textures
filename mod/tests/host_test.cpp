@@ -38,6 +38,9 @@ static void unitTests() {
     CHECK(!parse("textures/blocks/ctm/base/clean_glass", s));
     CHECK(!parse("textures/blocks/ctm/ctm-8x6-40/x", s));      // too few tiles for ctm
     CHECK(!parse("textures/blocks/ctm/ctm-8x6-47", s));        // no file name after the spec
+    // animated sheets are square, and their flipbook frames sit in an anim/ folder next to them
+    CHECK(parse("textures/blocks/ctm/ctm-7x7-47/x_seaLantern", s) && s.cols == 7 && s.rows == 7 && s.count == 47);
+    CHECK(parse("textures/blocks/ctm/ctm-7x7-47/anim/x_seaLantern", s) && s.method == Method::Ctm && s.cols == 7);
     CHECK(!parse("textures/blocks/ctm/ctm-8x5-47/x", s));      // count > cols*rows
     CHECK(!parse("textures/blocks/ctm/bogus-8x6-47/x", s));
 

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -196,5 +197,31 @@ class AppUiTest {
         back()
         compose.runOnUiThread { vm.tab = Tab.BROWSE }
         shot("13_browse_fallback_light", 1500)
+
+        // 11. An animation-only pack needs no mod; a Fusion pack counts its Fusion textures
+        val anim = File(System.getProperty("ctm.golden") ?: "", "packs/anim-vanilla-tiles")
+        if (anim.isDirectory) {
+            compose.runOnUiThread { vm.openUri(Uri.fromFile(zipDir(anim, File(compose.activity.cacheDir, "Animated tiles.zip")))) }
+            compose.waitUntil(30_000) { vm.session?.phase == Phase.Ready || vm.session?.phase is Phase.Failed }
+            compose.onNode(hasText("Convert") and hasClickAction()).performScrollTo().performClick()
+            compose.waitUntil(60_000) { vm.session?.phase is Phase.Done || vm.session?.phase is Phase.Failed }
+            val a = vm.session?.phase
+            assertTrue("conversion failed: $a", a is Phase.Done)
+            a as Phase.Done
+            assertTrue(a.result.blocks.isEmpty() && a.result.animated.isNotEmpty())
+            compose.onNodeWithText("No mod needed").assertExists()
+            compose.onNodeWithText("Animated textures (${a.result.animated.size})").performScrollTo()
+            shot("14_animated_only", 800)
+            compose.runOnUiThread { vm.closeSession() }
+        }
+        val fusion = File(System.getProperty("ctm.golden") ?: "", "packs/fusion-connected-glass")
+        if (fusion.isDirectory) {
+            compose.runOnUiThread { vm.openUri(Uri.fromFile(zipDir(fusion, File(compose.activity.cacheDir, "Fusion glass.zip")))) }
+            compose.waitUntil(30_000) { vm.session?.phase == Phase.Ready || vm.session?.phase is Phase.Failed }
+            assertEquals(Phase.Ready, vm.session?.phase)
+            assertTrue(vm.session!!.candidates[0].contents, "Fusion texture" in vm.session!!.candidates[0].contents)
+            shot("15_fusion_ready")
+            compose.runOnUiThread { vm.closeSession() }
+        }
     }
 }

@@ -1,7 +1,8 @@
 # CTM Forge
 
-Converts Java Edition connected-texture packs (OptiFine / Continuity "CTM") into Bedrock
-packs for the **Connected Textures** LeviLauncher mod (Minecraft 1.26.60). Browse Modrinth
+Converts Java Edition connected-texture packs (OptiFine / Continuity "CTM", and Fusion) and
+animated block textures into Bedrock packs for the **Connected Textures** LeviLauncher mod
+(Minecraft 1.26.60). Browse Modrinth
 natively, CurseForge and Planet Minecraft in the built-in browser, or open a .zip/.jar.
 
 - `core/` - plain Kotlin: the converter (a line-for-line port of `../converter/ctm_convert.py`), a PNG

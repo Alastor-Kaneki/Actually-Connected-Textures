@@ -27,6 +27,7 @@ class LibraryEntry(
     val direct: Boolean,
     val fileName: String,
     val blocks: Map<String, String>,
+    val animated: List<String>,
     val sheets: List<BlockSheet>,
     val log: List<String>,
     val createdAt: Long,
@@ -82,6 +83,7 @@ class Library(context: Context) {
             "direct" to JsonPrimitive(result.direct),
             "file" to JsonPrimitive(fileName),
             "blocks" to JsonObject(result.blocks.mapValues { JsonPrimitive(it.value) }),
+            "animated" to JsonArray(result.animated.map { JsonPrimitive(it) }),
             "sheets" to JsonArray(result.sheets.map {
                 JsonObject(linkedMapOf(
                     "block" to JsonPrimitive(it.block), "spec" to JsonPrimitive(it.spec), "path" to JsonPrimitive(it.sheetPath),
@@ -124,6 +126,7 @@ class Library(context: Context) {
             direct = (o["direct"] as? JsonPrimitive)?.booleanOrNull == true,
             fileName = fileName,
             blocks = (o["blocks"] as? JsonObject)?.mapValues { (it.value as JsonPrimitive).content } ?: emptyMap(),
+            animated = (o["animated"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList(),
             sheets = (o["sheets"] as? JsonArray)?.mapNotNull { it as? JsonObject }?.map { sh ->
                 BlockSheet(
                     (sh["block"] as JsonPrimitive).content, (sh["spec"] as JsonPrimitive).content, (sh["path"] as JsonPrimitive).content,
