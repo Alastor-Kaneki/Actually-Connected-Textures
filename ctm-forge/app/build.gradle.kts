@@ -30,7 +30,7 @@ android {
         applicationId = "com.alastor.ctmforge"
         minSdk = 28
         targetSdk = 36
-        versionCode = 3
+        versionCode = 4
         versionName = "Comma Chameleon"
     }
 
@@ -75,6 +75,7 @@ android {
             isIncludeAndroidResources = true
             all {
                 it.maxHeapSize = "2g"
+                it.systemProperty("ctm.fusionFixtures", rootProject.file("../tests/fixtures/fusion").absolutePath)
                 // Robolectric downloads its Android jars itself; Maven Central's own host rate-limits
                 it.systemProperty("robolectric.dependency.repo.url", "https://maven-central.storage-download.googleapis.com/maven2")
                 it.systemProperty("roborazzi.test.record", "true")

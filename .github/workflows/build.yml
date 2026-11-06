@@ -99,6 +99,13 @@ jobs:
           echo "::error::Add the CTM_FORGE_* signing secrets before tagging a release (see README)."
           exit 1
 
+      - name: Python Fusion regressions and parity fixtures
+        working-directory: .
+        run: |
+          python3 -m pip install Pillow==11.3.0
+          python3 -m unittest discover -s tests -v
+          python3 tests/fusion_goldens.py
+
       - name: Tests
         run: |
           chmod +x gradlew

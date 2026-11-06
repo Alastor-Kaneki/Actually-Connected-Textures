@@ -1,0 +1,12 @@
+{
+  "animation": {
+    "frametime": 5
+  },
+  "fusion": {
+    "type": "connecting",
+    "layout": "horizontal",
+    "connections": {
+      "type": "is_same_block"
+    }
+  }
+}

@@ -42,3 +42,10 @@ converter's output). The packs aren't included: they belong to their authors. Wi
 those tests skip. Screenshots go to `app/build/screens/`.
 
 Credits: hook signatures in the mod adapted from BedrockTools by RadiantByte (MIT).
+
+## Fusion support (build 4)
+
+The native converter reads supported Fusion texture metadata and connecting cube
+models. See [the compatibility guide](../docs/FUSION.md). Version name remains
+`Comma Chameleon`. Generate the mandatory cross-language fixtures before core tests:
+`python3 tests/fusion_goldens.py` from the repository root.

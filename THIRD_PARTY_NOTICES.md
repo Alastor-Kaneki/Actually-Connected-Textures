@@ -27,3 +27,10 @@ SOFTWARE.
 ```
 
 The OptiFine CTM tile layout and method rules follow the published OptiFine/MCPatcher format. converter/data/vanilla_26.60.json is extracted from Mojang/bedrock-samples v1.26.60.5.
+
+## FusionExamples regression fixtures
+
+`tests/fixtures/fusion` contains selected unmodified examples from
+https://github.com/SuperMartijn642/FusionExamples, MIT License, Copyright (c) 2024
+Martijn van den Brand. Full license and pinned provenance are included alongside the
+fixtures. These assets are used only in tests and are not packaged in the APK.

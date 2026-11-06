@@ -17,6 +17,8 @@ dependencies {
 }
 tasks.test {
     useJUnitPlatform()
+    systemProperty("ctm.fusionFixtures", rootProject.file("../tests/fixtures/fusion").absolutePath)
+    systemProperty("ctm.fusionGolden", rootProject.file("../build/fusion-golden").absolutePath)
     maxHeapSize = "2g"
     systemProperty("ctm.golden", System.getProperty("ctm.golden") ?: "")
     testLogging { events("passed", "failed", "skipped"); showStandardStreams = true; exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }

@@ -394,7 +394,7 @@ fun PackResultContent(
             blocks.keys.forEach { b -> SuggestionChip(onClick = {}, label = { Text(prettyBlock(b)) }) }
         }
     }
-    if (log.isNotEmpty()) NotesCard(log, startExpanded = false)
+    if (log.isNotEmpty()) NotesCard(log, startExpanded = log.any { it.startsWith("skip ") })
 }
 
 @Composable

@@ -334,8 +334,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 Phase.Failed(
                     "No connected textures in this pack",
-                    "CTM Forge converts packs made for OptiFine or Continuity connected textures. Those packs have " +
-                        "an \"optifine/ctm\" folder inside, and this one doesn't.",
+                    "CTM Forge supports OptiFine / Continuity rules and supported Fusion connected textures. " +
+                        "This pack has no CTM properties or Fusion texture/model metadata.",
                 )
             }
             return
