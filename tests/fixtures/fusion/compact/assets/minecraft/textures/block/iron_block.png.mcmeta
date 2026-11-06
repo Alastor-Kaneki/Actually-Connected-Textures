@@ -1,0 +1,9 @@
+{
+  "fusion": {
+    "type": "connecting",
+    "layout": "compact",
+    "connections": {
+      "type": "is_same_block"
+    }
+  }
+}

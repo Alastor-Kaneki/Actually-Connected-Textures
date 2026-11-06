@@ -15,7 +15,7 @@ class JavaPack private constructor(val files: Map<String, ByteArray>, val root: 
     fun get(path: String): ByteArray? = files[path]
 
     val ctmRuleCount: Int
-        get() = files.keys.count { isCtmRule(it) }
+        get() = files.keys.count { isCtmRule(it) } + Fusion.inputCount(this)
 
     companion object {
         /** Upper bound for the unpacked size of a pack, to keep zip bombs out. */
@@ -38,7 +38,8 @@ class JavaPack private constructor(val files: Map<String, ByteArray>, val root: 
         fun useful(path: String): Boolean {
             val p = path.lowercase()
             return p.endsWith(".png") || p.endsWith(".properties") || p.endsWith(".mcmeta") || p.endsWith(".zip") ||
-                p.endsWith("manifest.json")
+                p.endsWith("manifest.json") ||
+                (p.endsWith(".json") && ("/models/" in p || "/blockstates/" in p || "/fusion/" in p))
         }
 
         /** Reads the files of a zip (or jar) into memory, with sanitised paths. */

@@ -68,6 +68,28 @@ class AppUiTest {
     private fun back() = compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
     @Test
+    fun fusionImportConvertAndReportUnsupported() {
+        val fixtures = File(System.getProperty("ctm.fusionFixtures"))
+        for (name in listOf("glass", "glass-legacy", "animated")) {
+            val zip = zipDir(File(fixtures, name), File(compose.activity.cacheDir, "$name.zip"))
+            compose.runOnUiThread { vm.openUri(Uri.fromFile(zip)) }
+            compose.waitUntil(30_000) { vm.session?.phase == Phase.Ready || vm.session?.phase is Phase.Failed }
+            assertEquals("Fusion pack must reach conversion", Phase.Ready, vm.session?.phase)
+            compose.runOnUiThread { vm.convert() }
+            compose.waitUntil(30_000) { vm.session?.phase is Phase.Done || vm.session?.phase is Phase.Failed }
+            val phase = vm.session?.phase
+            if (name == "animated") {
+                assertTrue("Expected unsupported animation diagnostics: $phase", phase is Phase.Failed)
+                assertTrue((phase as Phase.Failed).log.any { "animated" in it })
+            } else {
+                assertTrue("Fusion conversion failed: $phase", phase is Phase.Done)
+                assertEquals(mapOf("glass" to "ctm-8x6-47"), (phase as Phase.Done).result.blocks)
+            }
+            compose.runOnUiThread { vm.closeSession() }
+        }
+    }
+
+    @Test
     fun launcherIcon() {
         val d = androidx.core.content.ContextCompat.getDrawable(compose.activity, R.mipmap.ic_launcher)!!
         val bmp = android.graphics.Bitmap.createBitmap(432, 432, android.graphics.Bitmap.Config.ARGB_8888)

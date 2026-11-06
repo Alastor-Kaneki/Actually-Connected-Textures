@@ -44,6 +44,11 @@ from pathlib import Path
 
 from PIL import Image
 
+try:
+    from . import fusion
+except ImportError:
+    import fusion
+
 HERE = Path(__file__).resolve().parent
 VANILLA = json.loads((HERE / "data" / "vanilla_26.60.json").read_text(encoding="utf-8"))
 VANILLA_BLOCKS: dict = VANILLA["blocks"]
@@ -164,6 +169,7 @@ class Rule:
     width: int = 1
     height: int = 1
     pack: "JavaPack | None" = None
+    fusion_rule: "fusion.Rule | None" = None
 
 
 def parse_properties(text: str) -> dict:
@@ -267,11 +273,16 @@ def read_rules(pack: JavaPack, log: list[str]) -> list[Rule]:
         if method == "repeat":
             r.width, r.height = int(props.get("width", 1)), int(props.get("height", 1))
         rules.append(r)
+    for f in fusion.read_rules(pack, log):
+        rules.append(Rule(f.path, {}, "fusion_" + f.layout, [f.block], f.faces, pack=pack, fusion_rule=f))
     return rules
 
 
 def java_main_texture_image(pack: JavaPack, block: str):
-    data = pack.get(f"assets/minecraft/textures/block/{main_java_texture(block)}.png")
+    path = f"assets/minecraft/textures/block/{main_java_texture(block)}.png"
+    if fusion.has_fusion(pack.get(path + ".mcmeta") or b"{}"):
+        return None  # A Fusion sheet is never an OptiFine default/base tile.
+    data = pack.get(path)
     return load_image(data) if data else None
 
 
@@ -320,6 +331,12 @@ def build_sheet(tiles: list[Image.Image], cols: int) -> tuple[Image.Image, int, 
 
 def rule_layout(rule: Rule, log: list[str]):
     """-> (runtime method name, tiles in runtime order, cols) or None."""
+    if rule.fusion_rule is not None:
+        try:
+            return "ctm", fusion.tiles(rule.pack, rule.fusion_rule, CTM47), 8
+        except (ValueError, OSError) as e:
+            log.append(f"skip {rule.path}: {e}")
+            return None
     m = rule.method
     tiles = rule.tiles
     if m == "ctm":
@@ -378,6 +395,7 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
     display = name or re.sub(r"[_\-]+", " ", src.stem).strip()
     slug = slug or slugify(display)
     rules = read_rules(pack, log)
+    fusion_paths = fusion.texture_paths(pack)
 
     files: dict[str, bytes] = {}
     terrain: dict[str, dict] = {}
@@ -415,7 +433,8 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
             stem = f"{slug}_{block}" + (f"_{nth + 1}" if nth else "")
             sheet_path = f"textures/blocks/ctm/{spec}/{stem}"
             base_path = f"textures/blocks/ctm/base/{stem}"
-            base_img = java_main_texture_image(pack, block) or tiles[0]
+            base_img = (None if rule.fusion_rule is not None or f"assets/minecraft/textures/block/{main_java_texture(block)}.png" in fusion_paths
+                        else java_main_texture_image(pack, block)) or tiles[0]
             files[sheet_path + ".png"] = png(sheet)
             alias = f"ctm_{stem}"
             if direct:  # fallback layout: the block's texture is the sheet itself (needs the mod)
@@ -439,9 +458,15 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
             blocks_json[block] = entry
             summary["blocks"][block] = spec
             summary["methods"][rule.method] = summary["methods"].get(rule.method, 0) + 1
+            if rule.fusion_rule is not None:
+                target = java_to_bedrock_texture(block) or converted_block_texture(block, summary["blocks"])
+                if target:
+                    files[target + ".png"] = png(tiles[0])
 
     # base texture overrides (items, particles) when the Java pack ships them
     for p, data in pack.files.items():
+        if p in fusion_paths:
+            continue  # Never copy a Fusion atlas as an ordinary block/item texture.
         m = re.fullmatch(r"assets/minecraft/textures/block/([a-z0-9_]+)\.png", p)
         if m:
             target = java_to_bedrock_texture(m.group(1)) or converted_block_texture(m.group(1), summary["blocks"])
@@ -449,7 +474,7 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
                 files[target + ".png"] = png(load_image(data))
 
     if not summary["blocks"]:
-        raise SystemExit(f"{src.name}: no convertible CTM rules found")
+        raise SystemExit(f"{src.name}: no convertible CTM rules found\n" + "\n".join(log))
 
     files["textures/terrain_texture.json"] = json.dumps({
         "resource_pack_name": slug, "texture_name": "atlas.terrain", "padding": 8, "num_mip_levels": 4,

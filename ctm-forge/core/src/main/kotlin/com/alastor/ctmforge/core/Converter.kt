@@ -239,6 +239,7 @@ object Converter {
         val weights: List<Int>,
         val width: Int,
         val height: Int,
+        val fusion: Fusion.Rule? = null,
     )
 
     private class Layout(val method: String, val tiles: List<Img>, val cols: Int)
@@ -246,6 +247,7 @@ object Converter {
     private class Job(val pack: JavaPack, val opt: ConvertOptions) {
         val log = ArrayList<String>()
         private val images = HashMap<String, Img>()
+        private val fusionPaths = Fusion.texturePaths(pack)
 
         fun has(path: String): Boolean = pack.get(path)?.isNotEmpty() == true
 
@@ -300,7 +302,7 @@ object Converter {
                 val connect = (props["connect"] ?: "block").lowercase()
                 if (connect != "block" && connect != "") log += "note $path: connect=$connect is treated as connect=block"
                 val innerSeams = (props["innerSeams"] ?: "false").lowercase() == "true"
-                val basePath = blocks.firstOrNull()?.let { mainTexturePath(it) }?.takeIf { has(it) }
+                val basePath = blocks.firstOrNull()?.let { mainTexturePath(it) }?.takeIf { it !in fusionPaths && has(it) }
                 val toks = expandTileList(props["tiles"] ?: "")
                 val tiles = toks.map { resolveTile(ruleDir, namespace, it, basePath) }
                 if (tiles.isEmpty() || tiles.any { it == null }) {
@@ -324,10 +326,14 @@ object Converter {
                     tiles.map { it!! }, weights, width, height,
                 )
             }
+            for (f in Fusion.readRules(pack, log)) rules += Rule(
+                f.path, emptyMap(), "fusion_${f.layout}", listOf(f.block), f.faces, false, emptyList(), emptyList(), 1, 1, f,
+            )
             return rules
         }
 
         fun ruleLayout(rule: Rule): Layout? {
+            rule.fusion?.let { return Layout("ctm", Fusion.tiles(pack, it), 8) }
             val m = rule.method
             val t = rule.tiles
             fun load(paths: List<String>) = paths.map { image(it) }
@@ -356,7 +362,7 @@ object Converter {
                     null
                 }
                 "top" -> {
-                    val base = rule.blocks.firstOrNull()?.let { mainTexturePath(it) }?.takeIf { has(it) }
+                    val base = rule.blocks.firstOrNull()?.let { mainTexturePath(it) }?.takeIf { it !in fusionPaths && has(it) }
                     if (base == null) {
                         log += "skip ${rule.path}: 'top' needs the block's own texture in the pack"
                         null
@@ -462,7 +468,7 @@ object Converter {
                     if (opt.direct) {
                         terrain[alias] = JsonObject(mapOf("textures" to JsonPrimitive(sheetPath)))
                     } else {
-                        val src = mainTexturePath(block).takeIf { has(it) }
+                        val src = mainTexturePath(block).takeIf { rule.fusion == null && it !in fusionPaths && has(it) }
                         val key = src ?: "<tile0>"
                         files["$basePath.png"] = basePngs.getOrPut(key) {
                             val base = src?.let { runCatching { image(it) }.getOrNull() } ?: tile0
@@ -482,6 +488,10 @@ object Converter {
                     blocks[block] = spec
                     methods[rule.method] = (methods[rule.method] ?: 0) + 1
                     sheets += BlockSheet(block, spec, sheetPath, FACE_NAMES.filter { it in faces })
+                    if (rule.fusion != null) {
+                        val target = javaToBedrockTexture(block) ?: convertedBlockTexture(block, blocks)
+                        if (target != null) files["$target.png"] = png(tile0)
+                    }
                 }
                 releaseImages()
             }
@@ -489,6 +499,7 @@ object Converter {
 
             // base texture overrides (items, particles) when the Java pack ships them
             for ((p, data) in pack.files) {
+                if (p in fusionPaths) continue // Never use a Fusion atlas as a base/item texture.
                 val m = BLOCK_TEXTURE.matchEntire(p) ?: continue
                 val name = m.groupValues[1]
                 val target = javaToBedrockTexture(name) ?: convertedBlockTexture(name, blocks) ?: continue
@@ -611,5 +622,5 @@ object Converter {
         Job(pack, options).run(progress)
 
     /** Number of CTM rule files in a pack (quick check before converting). */
-    fun countRules(pack: JavaPack): Int = pack.files.keys.count { it.endsWith(".properties") && RULE_PATH.matches(it) }
+    fun countRules(pack: JavaPack): Int = pack.ctmRuleCount
 }

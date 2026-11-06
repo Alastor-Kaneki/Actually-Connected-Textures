@@ -1,6 +1,6 @@
 # Actually Connected Textures
 
-OptiFine-style connected textures (CTM) for Minecraft Bedrock 1.26.60 on Android (arm64,
+OptiFine-style and supported Fusion connected textures (CTM) for Minecraft Bedrock 1.26.60 on Android (arm64,
 LeviLauncher), plus the tools to make packs for it:
 
 | Folder | What it is |
@@ -10,7 +10,8 @@ LeviLauncher), plus the tools to make packs for it:
 | `ctm-forge/` | **CTM Forge**, the Android app: browse Modrinth / CurseForge / Planet Minecraft, convert on the phone, import into LeviLauncher |
 | `tools/` | Checks for converted packs, previews, and `merge_packs.py` |
 
-Resource packs aren't in this repo: they belong to their authors.
+Resource packs belong to their authors. Small MIT-licensed official Fusion examples are
+in `tests/fixtures/fusion` for offline regression tests.
 
 ## GitHub Actions
 
@@ -61,6 +62,13 @@ mod, but glass shows a grid of tiles when the mod is off.
 
 `config/connected_textures.json` in the mod folder has three switches:
 `enabled`, `blocks` (full glass blocks) and `panes`.
+
+### Fusion packs
+
+CTM Forge 4 supports static Fusion connected glass and compatible full-cube layouts
+(`pieced`, `compact`, `full`, `simple`, `horizontal`, `vertical`). Unsupported features
+are reported in conversion notes. See [Fusion compatibility](docs/FUSION.md) for the
+exact subset, limits and tests. The app keeps version name **Comma Chameleon**.
 
 ### What's supported
 
