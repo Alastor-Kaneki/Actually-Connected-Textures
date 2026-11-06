@@ -535,7 +535,7 @@ CTM_EXPORT bool PLMod_Load(JavaVM*, const PLModInfo* info) {
     const char* root = info ? info->mod_root_path : nullptr;
     if (root && *root) g_statusPath = std::string(root) + "/status.txt";
     if (!gameProcess()) return true;
-    status("Connected Textures 1.0.0 for Minecraft 1.26.60", true);
+    status("Connected Textures 1.0.1 for Minecraft 1.26.60", true);
     loadConfig(root);
     LOGI("loading (blocks=%d panes=%d enabled=%d)", g_cfg.blocks, g_cfg.panes, g_cfg.enabled);
     trySetup();

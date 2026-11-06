@@ -37,6 +37,22 @@ class GoldenTest {
         "better-glass" to "packs/better_glass_yami",
         "translucent-glass-0.3.0" to "packs/translucent_glass",
         "Clear_and_Polished_Obsidian" to "obsidian/clear_and_polished_obsidian",
+        // animated CTM tiles, Fusion layouts, matchTiles, Bedrock-renamed blocks, animation-only packs
+        "connected-sea-lanterns" to "packs2/connected_sea_lanterns",
+        "connected-textures-fusion" to "packs2/connected_textures_fusion",
+        "less-painful-glowstone" to "packs2/less_painful_glowstone",
+        "less-painful-glowstone-ctm" to "packs2/less_painful_glowstone_ctm",
+        "Connected_Froglights" to "packs2/connected_froglights",
+        "DrXs_Connected_logs" to "packs2/drxs_connected_logs",
+        "fusion-connected-glass" to "packs2/fusion_connected_glass",
+        "fusion-connected-blocks" to "packs2/fusion_connected_blocks",
+        "fusion-connected-planks" to "packs2/fusion_connected_planks",
+        "faithful-fusion-clean-glass-32x" to "packs2/faithful_fusion_clean_glass_32x",
+        "fusion-better-stained-glass" to "packs2/fusion_better_stained_glass",
+        "ctm-overhaul" to "packs2/ctm_overhaul",
+        // synthetic: every way vanilla animates a tile, and 1.12 texture names
+        "anim-vanilla-tiles" to "packs2/anim_vanilla_tiles",
+        "anim-legacy-tiles" to "packs2/anim_legacy_tiles",
     )
 
     private fun loadDir(dir: File): Map<String, ByteArray> {
@@ -209,8 +225,148 @@ class GoldenTest {
             Converter.convert(pack, ConvertOptions(name = "x"))
             fail("expected an error")
         } catch (e: ConversionException) {
-            assertTrue(e.message!!.contains("No convertible"))
+            assertTrue(e.message!!.contains("No connected or animated"))
         }
+    }
+
+    private fun strip(frames: Int, size: Int = 16, seed: Int = 0) =
+        Png.encode(Img(size, size * frames, IntArray(size * size * frames) { i -> (0xff000000.toInt() or ((i / (size * size) + seed) * 0x1f3d5b)) }))
+
+    private fun json(files: Map<String, ByteArray>, path: String) = Json.parseToJsonElement(String(files.getValue(path)))
+
+    @Test
+    fun fusionLayoutsMapOntoTheFortySevenTiles() {
+        // every neighbour state (diagonals only where both sides connect) of one CTM47 class
+        // must pick the same Fusion tile, or the expansion to 47 tiles would be lossy
+        fun valid(s: Int) = (0 until 4).all { q -> val d = (s shr (q * 2 + 1)) and 1; d == 0 || ((s shr (q * 2)) and 1 == 1 && (s shr (((q + 1) % 4) * 2)) and 1 == 1) }
+        for (layout in listOf("full", "simple", "compact")) {
+            val map = Fusion.TO_47.getValue(layout)
+            assertEquals(47, map.size)
+            val (gw, gh) = Fusion.GRID.getValue(layout)
+            assertTrue(map.all { it in 0 until gw * gh }, layout)
+        }
+        assertEquals(47, Fusion.TO_47.getValue("full").toSet().size) // full has a tile for every class
+        assertTrue((0 until 256).filter(::valid).isNotEmpty())
+    }
+
+    @Test
+    fun animatedCtmTilesBecomeAnAnimatedSquareSheet() {
+        val entries = LinkedHashMap<String, ByteArray>()
+        entries["pack.mcmeta"] = """{"pack":{"pack_format":15}}""".toByteArray()
+        entries["assets/minecraft/optifine/ctm/sea_lantern/sea_lantern.properties"] =
+            "matchBlocks=minecraft:sea_lantern\nmethod=ctm_compact\ntiles=0.png, 1.png, 2.png, 3.png, 4.png".toByteArray()
+        for (i in 0 until 5) {
+            entries["assets/minecraft/optifine/ctm/sea_lantern/$i.png"] = strip(3, seed = i * 7)
+            entries["assets/minecraft/optifine/ctm/sea_lantern/$i.png.mcmeta"] = """{"animation":{"frametime":5}}""".toByteArray()
+        }
+        entries["__MACOSX/assets/minecraft/optifine/ctm/sea_lantern/._0.png"] = "junk".toByteArray()
+        val r = Converter.convert(JavaPack.fromEntries(entries), ConvertOptions(name = "Lanterns"))
+        assertEquals(mapOf("seaLantern" to "ctm-7x7-47"), r.blocks) // Java sea_lantern is seaLantern on Bedrock
+        assertEquals(listOf("seaLantern"), r.animated)
+        val sheet = Png.decode(r.files.getValue("textures/blocks/ctm/ctm-7x7-47/lanterns_seaLantern.png"))
+        assertEquals(112 to 112, sheet.width to sheet.height)
+        val anim = Png.decode(r.files.getValue("textures/blocks/ctm/ctm-7x7-47/anim/lanterns_seaLantern.png"))
+        assertEquals(112 to 336, anim.width to anim.height)
+        val fb = json(r.files, "textures/flipbook_textures.json") as JsonArray
+        val last = fb.last().jsonObject
+        assertEquals("ctm_lanterns_seaLantern", last["atlas_tile"]!!.jsonPrimitive.content)
+        assertEquals(1, last["atlas_tile_variant"]!!.jsonPrimitive.int)
+        assertEquals(5, last["ticks_per_frame"]!!.jsonPrimitive.int)
+        assertEquals(listOf(0, 1, 2), (last["frames"] as JsonArray).map { it.jsonPrimitive.int })
+        assertEquals(false, last["blend_frames"]!!.jsonPrimitive.content.toBoolean())
+    }
+
+    @Test
+    fun plainAnimationFollowsTheMcmetaTiming() {
+        val r = Converter.convert(JavaPack.fromEntries(mapOf(
+            "pack.mcmeta" to """{"pack":{"pack_format":15}}""".toByteArray(),
+            "assets/minecraft/textures/block/nether_portal.png" to strip(3),
+            "assets/minecraft/textures/block/nether_portal.png.mcmeta" to
+                """{"animation":{"frametime":2,"interpolate":true,"frames":[0,{"index":2,"time":6},1]}}""".toByteArray(),
+        )), ConvertOptions(name = "Portal"))
+        assertTrue(r.blocks.isEmpty())
+        assertEquals(16 to 48, Png.decode(r.files.getValue("textures/blocks/portal.png")).let { it.width to it.height })
+        val e = (json(r.files, "textures/flipbook_textures.json") as JsonArray).single().jsonObject
+        assertEquals("portal", e["atlas_tile"]!!.jsonPrimitive.content)
+        assertEquals(2, e["ticks_per_frame"]!!.jsonPrimitive.int)
+        // frame 0 for 2 ticks, frame 2 for 6, frame 1 for 2; the strip keeps the pack's frame order
+        assertEquals(listOf(0, 2, 2, 2, 1), (e["frames"] as JsonArray).map { it.jsonPrimitive.int })
+        assertEquals(true, e["blend_frames"]!!.jsonPrimitive.content.toBoolean())
+    }
+
+    @Test
+    fun vanillaAnimatedTilesKeepVanillasFlipbookFields() {
+        val r = Converter.convert(JavaPack.fromEntries(mapOf(
+            "pack.mcmeta" to """{"pack":{"pack_format":15}}""".toByteArray(),
+            "assets/minecraft/textures/block/command_block_front.png" to strip(4),
+            "assets/minecraft/textures/block/command_block_front.png.mcmeta" to """{"animation":{"frametime":10}}""".toByteArray(),
+            "assets/minecraft/textures/block/water_flow.png" to strip(2, size = 32),
+            "assets/minecraft/textures/block/water_flow.png.mcmeta" to """{"animation":{}}""".toByteArray(),
+            "assets/minecraft/textures/block/respawn_anchor_top.png" to strip(2),
+            "assets/minecraft/textures/block/respawn_anchor_top.png.mcmeta" to """{"animation":{}}""".toByteArray(),
+            "assets/minecraft/textures/block/prismarine.png" to strip(2),
+            "assets/minecraft/textures/block/prismarine.png.mcmeta" to """{"animation":{"frametime":300}}""".toByteArray(),
+            "assets/minecraft/textures/block/magma.png" to strip(2),
+            "assets/minecraft/textures/block/magma.png.mcmeta" to
+                """{"animation":{"frames":[{"index":0,"time":1000000},{"index":1,"time":1}]}}""".toByteArray(),
+        )), ConvertOptions(name = "Vanilla tiles"))
+        val fb = (json(r.files, "textures/flipbook_textures.json") as JsonArray).map { it.jsonObject }
+        fun entries(tile: String) = fb.filter { it["atlas_tile"]!!.jsonPrimitive.content == tile }
+        fun JsonObject.int(k: String) = this[k]?.jsonPrimitive?.int
+        fun size(path: String) = Png.decode(r.files.getValue(path)).let { it.width to it.height }
+
+        // vanilla's command blocks animate a strip next to a still atlas texture: both are written
+        val cmd = entries("command_block_front").single()
+        assertEquals("textures/blocks/command_block_front", cmd["flipbook_texture"]!!.jsonPrimitive.content)
+        assertEquals(16 to 64, size("textures/blocks/command_block_front.png"))
+        assertEquals(16 to 16, size("textures/blocks/command_block_front_mipmap.png"))
+        // flowing water keeps vanilla's replicate
+        assertEquals(2, entries("flowing_water_grey").single().int("replicate"))
+        // vanilla's array flipbooks: atlas_index and atlas_tile_variant both name the index
+        val anchor = entries("respawn_anchor_top")
+        assertEquals(listOf(1, 2, 3, 4), anchor.map { it.int("atlas_index") })
+        assertEquals(listOf(1, 2, 3, 4), anchor.map { it.int("atlas_tile_variant") })
+        // tiles vanilla doesn't animate: arrays do the same, single textures name no index
+        val wall = entries("cobblestone_wall").single()
+        assertEquals(11 to 11, wall.int("atlas_index") to wall.int("atlas_tile_variant"))
+        val block = entries("prismarine").single()
+        assertEquals(null to null, block.int("atlas_index") to block.int("atlas_tile_variant"))
+        // a huge frame time is counted in coarser steps instead of one frame per tick
+        val magma = entries("magma").single()
+        assertTrue((magma["frames"] as JsonArray).size <= Anim.MAX_TICKS + 1, "${(magma["frames"] as JsonArray).size} frames")
+        assertTrue(magma.int("ticks_per_frame")!! > 1)
+        assertEquals(listOf("command_block_front", "magma", "prismarine", "respawn_anchor_top", "water_flow"), r.animated.sorted())
+    }
+
+    @Test
+    fun matchTilesFindTheBedrockFaces() {
+        val r = Converter.convert(JavaPack.fromEntries(mapOf(
+            "pack.mcmeta" to """{"pack":{"pack_format":15}}""".toByteArray(),
+            "assets/minecraft/optifine/ctm/log/oak.properties" to "matchTiles=oak_log_top\nmethod=fixed\ntiles=0".toByteArray(),
+            "assets/minecraft/optifine/ctm/log/0.png" to strip(1),
+        )), ConvertOptions(name = "Logs"))
+        assertTrue("oak_log" in r.blocks, r.blocks.toString())
+        val tex = json(r.files, "blocks.json").jsonObject["oak_log"]!!.jsonObject["textures"]!!.jsonObject
+        assertEquals("ctm_logs_oak_log", tex["up"]!!.jsonPrimitive.content)
+        assertEquals("ctm_logs_oak_log", tex["down"]!!.jsonPrimitive.content)
+        assertEquals("oak_log_side", tex["side"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun fusionPiecedTextureFromAModel() {
+        val tiles = Img(80, 16, IntArray(80 * 16) { i -> 0xff000000.toInt() or (((i % 80) / 16) * 0x303030) })
+        val r = Converter.convert(JavaPack.fromEntries(mapOf(
+            "pack.mcmeta" to """{"pack":{"pack_format":15},"fusion":{"overrides_folder":"fo"}}""".toByteArray(),
+            "fo/assets/minecraft/models/block/glass.json" to
+                """{"loader":"fusion:model","type":"connecting","parent":"minecraft:block/cube_all","textures":{"all":"demo:block/cg"}}""".toByteArray(),
+            "assets/demo/textures/block/cg.png" to Png.encode(tiles),
+            "assets/demo/textures/block/cg.png.mcmeta" to """{"fusion":{"type":"connecting","layout":"pieced"}}""".toByteArray(),
+        )), ConvertOptions(name = "Fusion"))
+        assertEquals(mapOf("glass" to "ctm-8x6-47"), r.blocks)
+        assertEquals(mapOf("fusion:pieced" to 1), r.methods)
+        val sheet = Png.decode(r.files.getValue("textures/blocks/ctm/ctm-8x6-47/fusion_glass.png"))
+        assertEquals(tiles[0, 0], sheet[0, 0]) // tile 0 is the unconnected piece
+        assertEquals(tiles[16, 0], sheet[(26 % 8) * 16, (26 / 8) * 16]) // CTM tile 26 (all around) is Fusion's tile 1
     }
 
     @Test

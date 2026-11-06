@@ -161,7 +161,7 @@ private fun EntryCard(vm: AppViewModel, e: LibraryEntry) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(e.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "${e.blocks.size} block${if (e.blocks.size == 1) "" else "s"} · ${e.layoutLabel}",
+                    "${resultContents(e.blocks.size, e.animated.size)} · ${e.layoutLabel}",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
@@ -214,7 +214,7 @@ fun PackScreen(vm: AppViewModel, id: String) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 PackIcon(rememberEntryIcon(entry), 64.dp)
                 Column {
-                    Text("${entry.blocks.size} block${if (entry.blocks.size == 1) "" else "s"} connected", style = MaterialTheme.typography.headlineSmall)
+                    Text(resultHeadline(entry.blocks.size, entry.animated.size), style = MaterialTheme.typography.headlineSmall)
                     Text(
                         "${entry.layoutLabel} · v${entry.versionLabel} · ${fileSize(entry.mcpack.length())}",
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -229,6 +229,7 @@ fun PackScreen(vm: AppViewModel, id: String) {
                 vm = vm,
                 sheets = entry.sheets,
                 blocks = entry.blocks,
+                animated = entry.animated,
                 log = entry.log,
                 mcpack = entry.mcpack,
                 readFile = { path -> entry.readPackFile(path) },

@@ -188,7 +188,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val rules: Int,
         val icon: ImageBitmap?,
         val description: String,
+        /** "3 CTM rules · 12 Fusion textures · 2 animated textures" */
+        val contents: String = "",
     )
+
+    private fun contentsLabel(p: JavaPack): String = listOfNotNull(
+        p.ctmRuleCount.takeIf { it > 0 }?.let { "$it CTM rule${if (it == 1) "" else "s"}" },
+        p.fusionTextureCount.takeIf { it > 0 }?.let { "$it Fusion texture${if (it == 1) "" else "s"}" },
+        p.animatedTextureCount.takeIf { it > 0 }?.let { "$it animated texture${if (it == 1) "" else "s"}" },
+    ).joinToString(" · ")
 
     sealed interface Phase {
         data class Downloading(val done: Long, val total: Long) : Phase
@@ -321,7 +329,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 CandidateUi(
                     label = c.label,
                     pack = c.pack,
-                    rules = c.pack.ctmRuleCount,
+                    rules = c.pack.convertibleCount,
+                    contents = contentsLabel(c.pack),
                     icon = c.pack.get("pack.png")?.let { runCatching { RemoteImages.decode(it, 128) }.getOrNull() },
                     description = packDescription(c.pack),
                 )
@@ -333,9 +342,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 Phase.Failed("This is already a Bedrock pack", "It doesn't need converting: import it into Minecraft as it is.")
             } else {
                 Phase.Failed(
-                    "No connected textures in this pack",
-                    "CTM Forge converts packs made for OptiFine or Continuity connected textures. Those packs have " +
-                        "an \"optifine/ctm\" folder inside, and this one doesn't.",
+                    "No connected or animated textures in this pack",
+                    "CTM Forge converts packs made for OptiFine, Continuity or Fusion connected textures, and animated " +
+                        "block textures. This pack has no \"optifine/ctm\" folder, no Fusion textures and no animated blocks.",
                 )
             }
             return
@@ -376,7 +385,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: ConversionException) {
                 s.phase = Phase.Failed(
                     "Nothing could be converted",
-                    "None of this pack's connected-texture rules work on Bedrock yet. The notes below say why for each rule.",
+                    "None of this pack's connected or animated textures work on Bedrock yet. The notes below say why for each one.",
                     e.log,
                 )
             } catch (e: OutOfMemoryError) {

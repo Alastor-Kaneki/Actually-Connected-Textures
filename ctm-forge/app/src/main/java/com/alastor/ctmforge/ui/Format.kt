@@ -37,8 +37,22 @@ fun relativeDate(millis: Long): String {
 
 fun relativeDate(iso: String): String = isoMillis(iso)?.let { relativeDate(it) } ?: ""
 
-/** "white_stained_glass_pane" -> "White stained glass pane". */
-fun prettyBlock(id: String): String = id.replace('_', ' ').replaceFirstChar { it.uppercase() }
+/** "white_stained_glass_pane" -> "White stained glass pane", "seaLantern" -> "Sea lantern". */
+fun prettyBlock(id: String): String =
+    id.replace(CAMEL_HUMP) { " " + it.value.lowercase() }.replace('_', ' ').replaceFirstChar { it.uppercase() }
+
+private val CAMEL_HUMP = Regex("(?<=[a-z])[A-Z]")
+
+/** Headline of a converted pack: "35 blocks connected", or "3 textures animated" when no block connects. */
+fun resultHeadline(blocks: Int, animated: Int): String =
+    if (blocks > 0 || animated == 0) "$blocks block${if (blocks == 1) "" else "s"} connected"
+    else "$animated texture${if (animated == 1) "" else "s"} animated"
+
+/** What a converted pack holds, for list rows: "35 blocks · 2 animated". */
+fun resultContents(blocks: Int, animated: Int): String = listOfNotNull(
+    if (blocks > 0 || animated == 0) "$blocks block${if (blocks == 1) "" else "s"}" else null,
+    if (animated > 0) "$animated animated" else null,
+).joinToString(" · ")
 
 /** "ctm-8x6-47-s" -> "Full CTM, 47 tiles". */
 fun prettySpec(spec: String): String {

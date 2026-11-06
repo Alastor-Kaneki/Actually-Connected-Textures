@@ -6,9 +6,9 @@ LeviLauncher), plus the tools to make packs for it:
 | Folder | What it is |
 | --- | --- |
 | `mod/` | The LeviLauncher native mod (`ConnectedTextures.levipack`) |
-| `converter/` | `ctm_convert.py`: Java CTM pack -> Bedrock pack (the reference converter) |
+| `converter/` | `ctm_convert.py`: Java CTM / Fusion pack -> Bedrock pack (the reference converter) |
 | `ctm-forge/` | **CTM Forge**, the Android app: browse Modrinth / CurseForge / Planet Minecraft, convert on the phone, import into LeviLauncher |
-| `tools/` | Checks for converted packs, previews, and `merge_packs.py` |
+| `tools/` | Checks for converted packs, previews, `merge_packs.py`, and the scripts that build `converter/data` |
 
 Resource packs aren't in this repo: they belong to their authors.
 
@@ -45,7 +45,7 @@ without the real key.
 1. Import `ConnectedTextures.levipack` in LeviLauncher and enable it.
 2. Import one of the converted `.mcpack` files and turn it on under
    Settings > Global Resources (or in a world's resource packs).
-3. Load a world. Glass and glass panes connect.
+3. Load a world. Glass, glass panes and the pack's other blocks connect.
 
 Turn off **Connected Glass** in BedrockTools while using this. Both mods change
 the same glass faces.
@@ -71,6 +71,14 @@ mod, but glass shows a grid of tiles when the mod is off.
   `innerSeams`, `weights`, `width`/`height`. `connect` is always `block`.
   Biome, height and block-state conditions are ignored.
 * Not supported: overlay methods.
+* Fusion (SuperMartijn642) connecting textures, from `pack.mcmeta` overrides folders, block
+  models (`fusion:model`) and texture `.mcmeta` files: the `full`, `simple`, `compact`,
+  `pieced`, `horizontal` and `vertical` layouts, plus Fusion's random, continuous and
+  scrolling textures. The `overlay` layout isn't supported. Connections are same-block only.
+* Animated textures (`.png.mcmeta` animations): animated CTM tiles, and plain animated block
+  textures such as fire, soul fire, nether portals, water, lava, sea lanterns, magma, command
+  blocks and lanterns. These become Bedrock flipbooks, so packs that only animate textures
+  work without the mod.
 * Full cube blocks go through the classic block renderer while the mod is on.
 
 Bedrock draws clear glass with alpha test (pixels are either solid or invisible),
@@ -84,6 +92,12 @@ connected block gets a texture alias whose terrain texture is a variations list,
 `[base texture (weight 1000000), tile sheet (weight 0.05)]`. Without the mod the
 base texture wins. The sheet path encodes how to read it:
 `textures/blocks/ctm/<method>-<cols>x<rows>-<count>[-s]/<name>.png`.
+
+Animated tiles make a square, animated sheet: a flipbook (`textures/flipbook_textures.json`)
+plays whole-sheet frames from `textures/blocks/ctm/<spec>/anim/<name>.png` into the sheet's
+atlas slot, so whichever tile the mod picks animates. Plain animated textures are written at
+their Bedrock paths with a flipbook that follows the Java timing; tiles vanilla already
+animates keep vanilla's image path, `atlas_index`, `atlas_tile_variant` and `replicate`.
 
 The mod (`mod/src`) hooks the 1.26.60 block renderer:
 
@@ -113,6 +127,9 @@ python3 package.py    # -> mod/build/ConnectedTextures.levipack
 `PL` is the `include` folder of [preloader-android](https://github.com/LiteLDev/preloader-android).
 `convert_all.sh` converts the glass packs (unpacked under `PACKS`, default `./packs`), and
 `tools/merge_packs.py` merges converted packs into one, the highest-priority pack first.
+`tools/build_java_map.py` (Java 26.3 names -> Bedrock) and `tools/build_vanilla_flipbooks.py`
+(vanilla flipbooks) rebuild the name tables in `converter/data`; copy them to
+`ctm-forge/core/src/main/resources` too.
 
 Tests: `clang++ -std=c++20 -Imod/src mod/tests/host_test.cpp -o host_test && ./host_test unit`.
 `tools/check_random.py`, `tools/check_sheet.py` and `tools/validate_packs.py`

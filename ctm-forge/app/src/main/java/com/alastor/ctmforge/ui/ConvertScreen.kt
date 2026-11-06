@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Notes
+import androidx.compose.material.icons.rounded.Animation
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
@@ -139,12 +140,13 @@ fun ConvertScreen(vm: AppViewModel, onPickFile: () -> Unit) {
                 )
                 is Phase.Done -> {
                     val entry = vm.library.find(p.entryId)
-                    SuccessHeader(p.result.blocks.size, p.result.name, if (p.result.direct) "Direct layout" else "Normal layout", p.result.version.joinToString("."))
+                    SuccessHeader(p.result.blocks.size, p.result.animated.size, p.result.name, if (p.result.direct) "Direct layout" else "Normal layout", p.result.version.joinToString("."))
                     if (entry != null) {
                         PackResultContent(
                             vm = vm,
                             sheets = p.result.sheets,
                             blocks = p.result.blocks,
+                            animated = p.result.animated,
                             log = p.result.log,
                             mcpack = entry.mcpack,
                             readFile = { path -> p.result.files[path] },
@@ -173,7 +175,7 @@ private fun ReadyContent(vm: AppViewModel, s: AppViewModel.Session) {
                     Text(c.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 Text(
-                    "${c.rules} connected-texture rule${if (c.rules == 1) "" else "s"}" + (s.source?.let { " · from $it" } ?: ""),
+                    c.contents + (s.source?.let { " · from $it" } ?: ""),
                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary,
                 )
             }
@@ -197,7 +199,7 @@ private fun ReadyContent(vm: AppViewModel, s: AppViewModel.Session) {
                     Spacer(Modifier.size(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(cand.label, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${cand.rules} rules", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(cand.contents, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -217,7 +219,7 @@ private fun ReadyContent(vm: AppViewModel, s: AppViewModel.Session) {
     SectionTitle("Layout")
     LayoutOption(
         selected = !s.direct, title = "Normal", badge = "Recommended",
-        text = "Connects with the mod running, and looks like the pack's plain glass without it.",
+        text = "Connects with the mod running, and looks like the pack's plain textures without it.",
         onClick = { s.direct = false },
     )
     LayoutOption(
@@ -271,11 +273,14 @@ private fun LayoutOption(selected: Boolean, title: String, badge: String?, text:
 }
 
 @Composable
-fun SuccessHeader(blocks: Int, name: String, layout: String, version: String) {
+fun SuccessHeader(blocks: Int, animated: Int, name: String, layout: String, version: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
         Column {
-            Text("$blocks block${if (blocks == 1) "" else "s"} connected", style = MaterialTheme.typography.headlineSmall)
+            Text(resultHeadline(blocks, animated), style = MaterialTheme.typography.headlineSmall)
+            if (blocks > 0 && animated > 0) {
+                Text("$animated animated", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            }
             Text("$name · $layout · v$version", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -307,6 +312,7 @@ fun PackResultContent(
     vm: AppViewModel,
     sheets: List<BlockSheet>,
     blocks: Map<String, String>,
+    animated: List<String>,
     log: List<String>,
     mcpack: File,
     readFile: (String) -> ByteArray?,
@@ -373,11 +379,18 @@ fun PackResultContent(
         }
     }
 
-    if (target != Launchers.MINECRAFT) {
+    if (blocks.isEmpty()) {
+        NoticeCard(
+            icon = Icons.Rounded.Animation,
+            title = "No mod needed",
+            text = "Animated textures play in Minecraft as they are. Turn the pack on in Global Resources.",
+        )
+    } else if (target != Launchers.MINECRAFT) {
         NoticeCard(
             icon = Icons.Rounded.Extension,
             title = "Needs the Connected Textures mod",
-            text = "Glass only connects while the mod runs in LeviLauncher (Minecraft 1.26.60). Install it once, then turn the pack on in Global Resources.",
+            text = "Blocks only connect while the mod runs in LeviLauncher (Minecraft 1.26.60). Install it once, then turn the pack on in Global Resources." +
+                if (animated.isNotEmpty()) " Animations play with or without it." else "",
             actions = {
                 TextButton(onClick = {
                     scope.launch {
@@ -389,9 +402,18 @@ fun PackResultContent(
         )
     }
 
-    ExpandableCard(icon = Icons.Rounded.GridView, title = "Connected blocks (${blocks.size})") {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            blocks.keys.forEach { b -> SuggestionChip(onClick = {}, label = { Text(prettyBlock(b)) }) }
+    if (blocks.isNotEmpty()) {
+        ExpandableCard(icon = Icons.Rounded.GridView, title = "Connected blocks (${blocks.size})") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                blocks.keys.forEach { b -> SuggestionChip(onClick = {}, label = { Text(prettyBlock(b)) }) }
+            }
+        }
+    }
+    if (animated.isNotEmpty()) {
+        ExpandableCard(icon = Icons.Rounded.Animation, title = "Animated textures (${animated.size})") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                animated.forEach { a -> SuggestionChip(onClick = {}, label = { Text(prettyBlock(a)) }) }
+            }
         }
     }
     if (log.isNotEmpty()) NotesCard(log, startExpanded = false)
