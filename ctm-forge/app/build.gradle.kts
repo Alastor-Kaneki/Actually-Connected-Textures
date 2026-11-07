@@ -62,6 +62,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        aidl = true // the Shizuku install service's interface
     }
 
     packaging {
@@ -106,6 +107,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // Shizuku: installs app updates as the shell user, without the system prompt
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")

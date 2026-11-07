@@ -63,8 +63,14 @@ fun SettingsScreen(vm: AppViewModel, padding: PaddingValues) {
     val scope = rememberCoroutineScope()
     var cache by remember { mutableLongStateOf(-1L) }
     LaunchedEffect(Unit) { cache = withContext(Dispatchers.IO) { vm.cacheBytes() } }
-    val modVersion = remember { Launchers.modVersion(context) }
+    val mod = vm.updater.mod
     val leviInstalled = remember { Launchers.isInstalled(context, Launchers.LEVILAUNCHER) }
+    // Updates go first while something is waiting, else above About
+    val waiting = updatesWaiting(vm)
+    val updates: @Composable () -> Unit = {
+        SectionTitle("Updates")
+        Group { UpdatesRows(vm) { Divider() } }
+    }
 
     Column(
         Modifier
@@ -74,6 +80,8 @@ fun SettingsScreen(vm: AppViewModel, padding: PaddingValues) {
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (waiting) updates()
+
         SectionTitle("Appearance")
         Group {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -146,15 +154,12 @@ fun SettingsScreen(vm: AppViewModel, padding: PaddingValues) {
         SectionTitle("Connected Textures mod")
         Group {
             ActionRow(
-                Icons.Rounded.Extension, "Install in LeviLauncher",
-                "Version $modVersion, for Minecraft 1.26.60" + if (leviInstalled) "" else " · LeviLauncher isn't installed",
+                Icons.Rounded.Extension, if (vm.updater.modPending) "Install the new version in LeviLauncher" else "Install in LeviLauncher",
+                "Version ${mod?.version ?: "?"}, for Minecraft ${mod?.minecraft ?: "1.26.60"}" +
+                    (if (mod != null && vm.updater.bundledMod?.version != mod.version) " · downloaded update" else "") +
+                    if (leviInstalled) "" else " · LeviLauncher isn't installed",
                 enabled = leviInstalled,
-            ) {
-                scope.launch {
-                    val f = withContext(Dispatchers.IO) { Launchers.modFile(context) }
-                    Launchers.open(context, f, Launchers.LEVILAUNCHER)?.let(vm::toast)
-                }
-            }
+            ) { vm.installMod(context) }
             Divider()
             ActionRow(Icons.Rounded.Share, "Share the mod file", "ConnectedTextures.levipack") {
                 scope.launch {
@@ -173,6 +178,8 @@ fun SettingsScreen(vm: AppViewModel, padding: PaddingValues) {
                 vm.clearCaches { cache = 0; vm.toast("Cache cleared") }
             }
         }
+
+        if (!waiting) updates()
 
         SectionTitle("About")
         Group {
@@ -193,8 +200,9 @@ fun SettingsScreen(vm: AppViewModel, padding: PaddingValues) {
                 supportingContent = {
                     Text(
                         "Hook signatures adapted from BedrockTools by RadiantByte (MIT). Search and downloads use the Modrinth API; " +
-                            "CurseForge and Planet Minecraft open in the built-in browser. Packs belong to their authors: check a pack's " +
-                            "license before sharing a converted copy.",
+                            "CurseForge and Planet Minecraft open in the built-in browser. Updates come from the project's GitHub " +
+                            "releases and can install through Shizuku (Shizuku API by RikkaW, MIT). Packs belong to their authors: " +
+                            "check a pack's license before sharing a converted copy.",
                     )
                 },
                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),

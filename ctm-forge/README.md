@@ -2,7 +2,7 @@
 
 Converts Java Edition connected-texture packs (OptiFine / Continuity "CTM", and Fusion) and
 animated block textures into Bedrock packs for the **Connected Textures** LeviLauncher mod
-(Minecraft 1.26.60). Browse Modrinth
+(Minecraft 1.26.60 and 1.26.62). Browse Modrinth
 natively, CurseForge and Planet Minecraft in the built-in browser, or open a .zip/.jar.
 
 - `core/` - plain Kotlin: the converter (a line-for-line port of `../converter/ctm_convert.py`), a PNG
@@ -31,6 +31,27 @@ Android won't let it update an install signed with the real key.
 
 Never commit the keystore or `keystore.properties` (they're in `.gitignore`). Keep a backup:
 Android only installs updates signed with the same key.
+
+## Updates
+
+CTM Forge reads this repository's latest GitHub release (drafts and pre-releases are skipped)
+when it opens, at most every 6 hours (Settings → Updates → Check automatically), or when you
+tap **Check for updates**. CI attaches the two files it looks for to every `v*` tag:
+
+- `CTM-Forge-<versionCode>.apk`: an update when `<versionCode>` is higher than the installed
+  build's, so **bump `versionCode` in `app/build.gradle.kts` before tagging a release**. The
+  download is checked against GitHub's SHA-256, its package name, its version and its signing
+  key before it installs.
+- `ConnectedTextures.levipack`: downloaded right away when its manifest `version` is newer than
+  the mod the app has. The app then offers it everywhere it offers the bundled mod.
+  LeviLauncher still imports it: tap **Install mod** on the card in the Library or in Settings.
+
+App updates install through [Shizuku](https://shizuku.rikka.app/) when it's running and CTM
+Forge is allowed in it (Settings → Updates → Install with Shizuku): no system prompt, and the
+app closes and opens again by itself. After an automatic check they install on their own
+(they wait if a conversion is running). Without Shizuku, **Update** uses Android's installer,
+which asks first; on Android 12+ later updates can skip that prompt once CTM Forge has installed
+itself.
 
 ## Tests
 

@@ -22,7 +22,9 @@ Every push to `main` and every pull request runs `.github/workflows/build.yml`:
    and builds the APK.
 
 Both files are under the run's **Artifacts**. Pushing a tag like `v1.0` also publishes a
-GitHub release with them.
+GitHub release with them. CTM Forge checks the latest release for updates to itself and to
+the mod (see `ctm-forge/README.md`, "Updates"): bump the app's `versionCode` before tagging,
+or installed copies won't see the new APK as newer.
 
 To sign the app with your real key (so CI builds update your installed CTM Forge), add
 these under Settings > Secrets and variables > Actions > Secrets:
