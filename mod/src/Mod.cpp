@@ -1,4 +1,4 @@
-// Connected Textures for LeviLauncher (Minecraft Bedrock 1.26.60, arm64).
+// Connected Textures for LeviLauncher (Minecraft Bedrock 1.26.60 / 1.26.62, arm64).
 //
 // Works together with Bedrock packs made by ctm_convert.py. Each converted
 // block's texture is a variations list [base texture, tile sheet]. While a
@@ -458,7 +458,7 @@ bool setup() {
         }
     }
     if (!ok) {
-        LOGE("this Minecraft version is not supported (built for 1.26.60); connected textures stay off");
+        LOGE("this Minecraft version is not supported (built for 1.26.60 and 1.26.62); connected textures stay off");
         return false;
     }
     g_getBlock = reinterpret_cast<GetBlockFn>(g_addr[Sig_GetBlock]);
@@ -535,7 +535,7 @@ CTM_EXPORT bool PLMod_Load(JavaVM*, const PLModInfo* info) {
     const char* root = info ? info->mod_root_path : nullptr;
     if (root && *root) g_statusPath = std::string(root) + "/status.txt";
     if (!gameProcess()) return true;
-    status("Connected Textures 1.0.1 for Minecraft 1.26.60", true);
+    status("Connected Textures 1.0.2 for Minecraft 1.26.60 / 1.26.62", true);
     loadConfig(root);
     LOGI("loading (blocks=%d panes=%d enabled=%d)", g_cfg.blocks, g_cfg.panes, g_cfg.enabled);
     trySetup();
