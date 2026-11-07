@@ -78,6 +78,32 @@ class AppUiTest {
         File(shots, "00_launcher_icon.png").outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    /** The update card, badge and Settings rows with a newer app build and a downloaded mod. */
+    @Test
+    fun updateScreens() {
+        val release = com.alastor.ctmforge.core.net.GitHub.Release(
+            tag = "v2026.11.20", name = "v2026.11.20", pageUrl = "https://example.com/release", publishedAt = "",
+            notes = "", prerelease = false,
+            assets = listOf(com.alastor.ctmforge.core.net.GitHub.Asset("CTM-Forge-99.apk", "https://example.com/a.apk", 3_108_030, null)),
+        )
+        val up = com.alastor.ctmforge.update.Updater.AppUpdate(99, release, release.assets[0])
+        compose.runOnUiThread {
+            vm.updater.showForTest(up, com.alastor.ctmforge.core.Updates.ModInfo("9.9.9", "1.26.60 and 1.26.62"))
+            vm.tab = Tab.LIBRARY
+        }
+        compose.onNodeWithText("CTM Forge build 99 is out").assertExists()
+        compose.onNodeWithText("Connected Textures 9.9.9 is ready").assertExists()
+        shot("16_library_updates")
+        compose.runOnUiThread { vm.tab = Tab.SETTINGS }
+        compose.onNodeWithText("Update to build 99").assertExists()
+        shot("17_settings_updates")
+        compose.runOnUiThread {
+            vm.updater.showForTest(up, null, com.alastor.ctmforge.update.Updater.Install.Downloading(1_200_000, 3_108_030))
+        }
+        compose.onNodeWithText("Downloading… 38%").assertExists()
+        shot("18_settings_downloading")
+    }
+
     @Test
     fun walkThroughEveryScreen() {
         val golden = File(System.getProperty("ctm.golden") ?: "", "packs/Clean_Connected_Glass_1.20-26.x")

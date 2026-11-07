@@ -1,4 +1,4 @@
-// Connected Textures for LeviLauncher - Minecraft Bedrock 1.26.60 (arm64) bindings.
+// Connected Textures for LeviLauncher - Minecraft Bedrock 1.26.60 / 1.26.62 (arm64) bindings.
 #pragma once
 
 #include <cstddef>
@@ -53,14 +53,16 @@ inline constexpr SigDef kSigs[Sig_Count] = {
     {"TextureUVCoordinateSetCopyCtor", "? ? ? A9 ? ? ? A9 FD 03 00 91 ? ? ? 3C ? ? ? 3D F4 03 01 AA F3 03 00 AA ? ? ? 3C ? ? ? 3D ? ? ? B9 ? ? ? B9 E8 03 01 AA", true},
     {"TextureUVCoordinateSetDtor", "? ? ? 39 ? ? ? 37 C0 03 5F D6 ? ? ? F9 ? ? ? ? ? ? ? ? ? ? ? F9 ? ? ? B4 40 01 67 9E", true},
     {"VertexUV (Connected Textures)", "FD 7B BE A9 F4 4F 01 A9 FD 03 00 91 02 10 2E 1E E3 03 22 1E F3 03 01 AA 03 10 2E 1E 10 20 22 1E ? ? ? ? 30 20 22 1E ? ? ? ? 08 50 46 39 03 8C 01 BD ? ? ? ?", true},
-    {"GraphicsForBlock (Connected Textures)", "FD 7B BE A9 F3 0B 00 F9 FD 03 00 91 F3 03 00 AA ? ? ? ? ? ? ? ? F3 0B 40 F9 FD 7B C2 A8 C0 03 5F D6 E0 03 13 AA ? ? ? ? ? ? ? ? E0 03 13 AA ? ? ? ? ? ? ? ? 09 1D 41 F9 ? ? ? ? 20 01 67 9E 08 00 40 B9 00 58 20 0E", true},
+    // "09 ? 4? F9" is `ldr x9, [x8, #page offset]` reading a global's bucket count. The offset moves
+    // whenever the game is relinked (0x238 in 1.26.60, 0x878 in 1.26.62), so only the opcode is matched.
+    {"GraphicsForBlock (Connected Textures)", "FD 7B BE A9 F3 0B 00 F9 FD 03 00 91 F3 03 00 AA ? ? ? ? ? ? ? ? F3 0B 40 F9 FD 7B C2 A8 C0 03 5F D6 E0 03 13 AA ? ? ? ? ? ? ? ? E0 03 13 AA ? ? ? ? ? ? ? ? 09 ? 4? F9 ? ? ? ? 20 01 67 9E 08 00 40 B9 00 58 20 0E", true},
 };
 
 }  // namespace game
 
 namespace game {
 
-// ------------------------------------------------------------------ layouts (1.26.60, arm64)
+// ------------------------------------------------------------------ layouts (1.26.60, arm64; unchanged in 1.26.62)
 namespace off {
 // BlockTessellator
 inline constexpr size_t BT_Region = 0x8;              // IConstBlockSource*

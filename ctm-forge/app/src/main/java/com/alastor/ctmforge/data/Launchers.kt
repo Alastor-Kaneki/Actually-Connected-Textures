@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.alastor.ctmforge.core.Updates
 import java.io.File
 
 /** Hands packs and the mod to LeviLauncher / Minecraft, and shares files. */
@@ -101,27 +102,36 @@ object Launchers {
         "No browser found"
     }
 
-    /** The bundled Connected Textures mod, copied where FileProvider can share it. */
+    /** Where the updater keeps a newer mod downloaded from GitHub. */
+    fun downloadedModFile(context: Context): File = File(File(context.filesDir, "updates"), MOD_ASSET)
+
+    private fun bundledMod(context: Context): ByteArray? = runCatching { context.assets.open(MOD_ASSET).use { it.readBytes() } }.getOrNull()
+
+    /** The newest Connected Textures mod the app has: a downloaded update, else the bundled copy. */
+    fun modBytes(context: Context): ByteArray {
+        val bundled = bundledMod(context)
+        val downloaded = downloadedModFile(context).takeIf { it.isFile }?.let { f -> runCatching { f.readBytes() }.getOrNull() }
+        if (downloaded != null) {
+            val d = Updates.modInfo(downloaded)
+            val b = bundled?.let { Updates.modInfo(it) }
+            if (d != null && (b == null || Updates.compareVersions(d.version, b.version) > 0)) return downloaded
+        }
+        return bundled ?: throw java.io.IOException("The mod file is missing from this build")
+    }
+
+    /** Version of the bundled mod alone (what a fresh install of this build offers). */
+    fun bundledModInfo(context: Context): Updates.ModInfo? = bundledMod(context)?.let { Updates.modInfo(it) }
+
+    fun modInfo(context: Context): Updates.ModInfo? = runCatching { Updates.modInfo(modBytes(context)) }.getOrNull()
+
+    /** The newest mod, copied where FileProvider can share it. */
     fun modFile(context: Context): File {
         val dir = File(context.cacheDir, "share").apply { mkdirs() }
         val out = File(dir, MOD_ASSET)
-        val bytes = context.assets.open(MOD_ASSET).use { it.readBytes() }
+        val bytes = modBytes(context)
         if (!out.isFile || out.length() != bytes.size.toLong() || !out.readBytes().contentEquals(bytes)) out.writeBytes(bytes)
         return out
     }
 
-    /** Version of the bundled mod, from its manifest. */
-    fun modVersion(context: Context): String = runCatching {
-        val bytes = context.assets.open(MOD_ASSET).use { it.readBytes() }
-        java.util.zip.ZipInputStream(bytes.inputStream()).use { z ->
-            while (true) {
-                val e = z.nextEntry ?: break
-                if (e.name == "manifest.json") {
-                    val text = z.readBytes().toString(Charsets.UTF_8)
-                    return@runCatching Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.get(1) ?: "?"
-                }
-            }
-            "?"
-        }
-    }.getOrDefault("?")
+    fun modVersion(context: Context): String = modInfo(context)?.version ?: "?"
 }

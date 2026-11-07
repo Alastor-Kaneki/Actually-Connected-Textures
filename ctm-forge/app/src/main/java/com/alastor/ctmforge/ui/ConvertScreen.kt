@@ -389,15 +389,11 @@ fun PackResultContent(
         NoticeCard(
             icon = Icons.Rounded.Extension,
             title = "Needs the Connected Textures mod",
-            text = "Blocks only connect while the mod runs in LeviLauncher (Minecraft 1.26.60). Install it once, then turn the pack on in Global Resources." +
+            text = "Blocks only connect while the mod runs in LeviLauncher (Minecraft ${vm.updater.mod?.minecraft ?: "1.26.60"}). " +
+                "Install it once, then turn the pack on in Global Resources." +
                 if (animated.isNotEmpty()) " Animations play with or without it." else "",
             actions = {
-                TextButton(onClick = {
-                    scope.launch {
-                        val f = withContext(Dispatchers.IO) { Launchers.modFile(context) }
-                        Launchers.open(context, f, Launchers.LEVILAUNCHER)?.let(vm::toast)
-                    }
-                }) { Text("Install mod") }
+                TextButton(onClick = { vm.installMod(context) }) { Text("Install mod") }
             },
         )
     }

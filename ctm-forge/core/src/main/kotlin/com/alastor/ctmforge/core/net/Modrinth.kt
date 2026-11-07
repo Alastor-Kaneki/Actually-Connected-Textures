@@ -58,7 +58,8 @@ object Http {
         }
     }
 
-    fun json(url: String): JsonElement = Json.parseToJsonElement(text(url, mapOf("Accept" to "application/json")))
+    fun json(url: String, headers: Map<String, String> = emptyMap()): JsonElement =
+        Json.parseToJsonElement(text(url, mapOf("Accept" to "application/json") + headers))
 
     class Download(val file: File, val fileName: String, val contentType: String?)
 

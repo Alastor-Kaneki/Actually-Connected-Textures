@@ -36,6 +36,15 @@ class Settings(context: Context) {
         private set
     var modCardDismissed by mutableStateOf(prefs.getBoolean("mod_card_dismissed", false))
         private set
+    /** Look for new versions of the app and the mod on GitHub when the app opens. */
+    var autoUpdate by mutableStateOf(prefs.getBoolean("auto_update", true))
+        private set
+    /** Install app updates by themselves through Shizuku, when it's running and allowed. */
+    var shizukuInstall by mutableStateOf(prefs.getBoolean("shizuku_install", true))
+        private set
+    /** Newest mod version handed to LeviLauncher from this app. */
+    var modSentVersion by mutableStateOf(prefs.getString("mod_sent_version", null))
+        private set
 
     fun updateThemeMode(v: ThemeMode) { themeMode = v; prefs.edit { putString("theme", v.name) } }
     fun updateDynamicColor(v: Boolean) { dynamicColor = v; prefs.edit { putBoolean("dynamic_color", v) } }
@@ -44,6 +53,9 @@ class Settings(context: Context) {
     fun updateDirectLayout(v: Boolean) { directLayout = v; prefs.edit { putBoolean("direct_layout", v) } }
     fun updateOpenWith(v: OpenWith) { openWith = v; prefs.edit { putString("open_with", v.name) } }
     fun updateModCardDismissed(v: Boolean) { modCardDismissed = v; prefs.edit { putBoolean("mod_card_dismissed", v) } }
+    fun updateAutoUpdate(v: Boolean) { autoUpdate = v; prefs.edit { putBoolean("auto_update", v) } }
+    fun updateShizukuInstall(v: Boolean) { shizukuInstall = v; prefs.edit { putBoolean("shizuku_install", v) } }
+    fun updateModSentVersion(v: String) { modSentVersion = v; prefs.edit { putString("mod_sent_version", v) } }
 
     /**
      * Next patch version for a pack. Minecraft refuses to import a pack whose UUID and version

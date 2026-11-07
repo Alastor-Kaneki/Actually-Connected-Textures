@@ -1,6 +1,7 @@
 package com.alastor.ctmforge
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.CookieManager
@@ -20,6 +21,7 @@ import com.alastor.ctmforge.core.isBedrockPack
 import com.alastor.ctmforge.core.net.Http
 import com.alastor.ctmforge.core.net.Modrinth
 import com.alastor.ctmforge.core.sniff
+import com.alastor.ctmforge.data.Launchers
 import com.alastor.ctmforge.ui.RemoteImages
 import com.alastor.ctmforge.ui.WebHolder
 import com.alastor.ctmforge.ui.WebSite
@@ -48,6 +50,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val app get() = getApplication<App>()
     val settings get() = app.settings
     val library get() = app.library
+    val updater get() = app.updater
 
     // ------------------------------------------------------------------ navigation
 
@@ -414,9 +417,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun cacheBytes(): Long =
         (File(app.cacheDir, "downloads").listFiles()?.sumOf { it.length() } ?: 0L) + RemoteImages.diskBytes()
 
+    /**
+     * Hands the newest mod the app has (a downloaded update or the bundled one) to LeviLauncher.
+     * With [shareIfMissing], opens the share sheet instead when LeviLauncher isn't installed.
+     */
+    fun installMod(context: Context, shareIfMissing: Boolean = false) {
+        viewModelScope.launch {
+            try {
+                val f = withContext(Dispatchers.IO) { Launchers.modFile(app) }
+                if (shareIfMissing && !Launchers.isInstalled(context, Launchers.LEVILAUNCHER)) {
+                    Launchers.share(context, f)
+                    return@launch
+                }
+                val problem = Launchers.open(context, f, Launchers.LEVILAUNCHER)
+                if (problem != null) toast(problem) else updater.markModSent()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                toast(friendly(e))
+            }
+        }
+    }
+
     // Last in the class body: everything above must be initialised before the first search.
     init {
         viewModelScope.launch(Dispatchers.IO) { library.reload() }
+        updater.busy = { session?.busy == true }
         search()
     }
 

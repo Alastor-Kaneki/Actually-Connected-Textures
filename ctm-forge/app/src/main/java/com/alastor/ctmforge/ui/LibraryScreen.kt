@@ -81,7 +81,6 @@ fun rememberEntryIcon(entry: LibraryEntry): ImageBitmap? {
 fun LibraryScreen(vm: AppViewModel, padding: PaddingValues, onPickFile: () -> Unit) {
     val library = vm.library
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val entries = library.entries
     val leviInstalled = Launchers.isInstalled(context, Launchers.LEVILAUNCHER)
     LazyColumn(
@@ -91,24 +90,26 @@ fun LibraryScreen(vm: AppViewModel, padding: PaddingValues, onPickFile: () -> Un
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (!vm.settings.modCardDismissed) {
+        if (updatesWaiting(vm)) {
+            item(key = "updates") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { UpdateCards(vm) }
+            }
+        }
+        if (!vm.settings.modCardDismissed && !vm.updater.modPending) {
             item(key = "mod") {
                 NoticeCard(
                     icon = Icons.Rounded.Extension,
                     title = "Connected Textures mod",
-                    text = "Converted packs connect only while this mod runs in LeviLauncher (Minecraft 1.26.60). " +
+                    text = "Converted packs connect only while this mod runs in LeviLauncher " +
+                        "(Minecraft ${vm.updater.mod?.minecraft ?: "1.26.60"}). " +
                         if (leviInstalled) "Install it once." else "LeviLauncher isn't installed on this phone.",
                     container = MaterialTheme.colorScheme.tertiaryContainer,
                     content = MaterialTheme.colorScheme.onTertiaryContainer,
                     actions = {
                         TextButton(onClick = { vm.settings.updateModCardDismissed(true) }) { Text("Hide") }
-                        FilledTonalButton(onClick = {
-                            scope.launch {
-                                val f = withContext(Dispatchers.IO) { Launchers.modFile(context) }
-                                if (leviInstalled) Launchers.open(context, f, Launchers.LEVILAUNCHER)?.let(vm::toast)
-                                else Launchers.share(context, f)
-                            }
-                        }) { Text(if (leviInstalled) "Install mod" else "Share mod file") }
+                        FilledTonalButton(onClick = { vm.installMod(context, shareIfMissing = true) }) {
+                            Text(if (leviInstalled) "Install mod" else "Share mod file")
+                        }
                     },
                 )
             }

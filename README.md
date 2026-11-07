@@ -1,6 +1,6 @@
 # Actually Connected Textures
 
-OptiFine-style connected textures (CTM) for Minecraft Bedrock 1.26.60 on Android (arm64,
+OptiFine-style connected textures (CTM) for Minecraft Bedrock 1.26.60 and 1.26.62 on Android (arm64,
 LeviLauncher), plus the tools to make packs for it:
 
 | Folder | What it is |
@@ -22,7 +22,9 @@ Every push to `main` and every pull request runs `.github/workflows/build.yml`:
    and builds the APK.
 
 Both files are under the run's **Artifacts**. Pushing a tag like `v1.0` also publishes a
-GitHub release with them.
+GitHub release with them. CTM Forge checks the latest release for updates to itself and to
+the mod (see `ctm-forge/README.md`, "Updates"): bump the app's `versionCode` before tagging,
+or installed copies won't see the new APK as newer.
 
 To sign the app with your real key (so CI builds update your installed CTM Forge), add
 these under Settings > Secrets and variables > Actions > Secrets:
@@ -99,7 +101,7 @@ atlas slot, so whichever tile the mod picks animates. Plain animated textures ar
 their Bedrock paths with a flipbook that follows the Java timing; tiles vanilla already
 animates keep vanilla's image path, `atlas_index`, `atlas_tile_variant` and `replicate`.
 
-The mod (`mod/src`) hooks the 1.26.60 block renderer:
+The mod (`mod/src`) hooks the 1.26.60 / 1.26.62 block renderer:
 
 * `RenderChunkBuilder::build` marks chunk builds.
 * `BlockGraphics::getTexture` returns the sheet instead of the base texture

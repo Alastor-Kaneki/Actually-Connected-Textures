@@ -9,11 +9,15 @@ import com.alastor.ctmforge.core.net.Http
 import com.alastor.ctmforge.data.Library
 import com.alastor.ctmforge.data.Settings
 import com.alastor.ctmforge.ui.RemoteImages
+import com.alastor.ctmforge.update.ShizukuInstaller
+import com.alastor.ctmforge.update.Updater
 
 class App : Application() {
     lateinit var settings: Settings
         private set
     lateinit var library: Library
+        private set
+    lateinit var updater: Updater
         private set
 
     override fun onCreate() {
@@ -23,6 +27,8 @@ class App : Application() {
         Http.userAgent = "alastor/ctm-forge/${BuildConfig.VERSION_CODE} (com.alastor.ctmforge)"
         Converter.fallbackDecoder = ::decodeWithAndroid
         RemoteImages.init(this)
+        ShizukuInstaller.init()
+        updater = Updater(this).also { it.start() }
     }
 }
 

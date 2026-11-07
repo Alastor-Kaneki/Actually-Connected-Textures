@@ -19,6 +19,8 @@ import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -41,6 +43,7 @@ import com.alastor.ctmforge.AppViewModel
 import com.alastor.ctmforge.AppViewModel.Route
 import com.alastor.ctmforge.AppViewModel.Tab
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.merge
 
 private fun routeKey(route: Route?): String = when (route) {
     null -> "main"
@@ -52,7 +55,7 @@ private fun routeKey(route: Route?): String = when (route) {
 @Composable
 fun AppRoot(vm: AppViewModel, onPickFile: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
-    LaunchedEffect(Unit) { vm.messages.collectLatest { snackbar.showSnackbar(it) } }
+    LaunchedEffect(Unit) { merge(vm.messages, vm.updater.messages).collectLatest { snackbar.showSnackbar(it) } }
 
     val top = vm.routes.lastOrNull()
     BackHandler(enabled = top != null) { vm.pop() }
@@ -114,10 +117,15 @@ private fun MainTabs(vm: AppViewModel, onPickFile: () -> Unit) {
             NavigationBar(windowInsets = bottomInsets(immersive)) {
                 TABS.forEach { t ->
                     val selected = vm.tab == t.tab
+                    val badge = t.tab == Tab.SETTINGS && updatesWaiting(vm)
                     NavigationBarItem(
                         selected = selected,
                         onClick = { vm.tab = t.tab },
-                        icon = { Icon(if (selected) t.selectedIcon else t.icon, contentDescription = null) },
+                        icon = {
+                            BadgedBox(badge = { if (badge) Badge() }) {
+                                Icon(if (selected) t.selectedIcon else t.icon, contentDescription = if (badge) "Updates available" else null)
+                            }
+                        },
                         label = { Text(t.label) },
                     )
                 }
