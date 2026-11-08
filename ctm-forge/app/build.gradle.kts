@@ -30,8 +30,8 @@ android {
         applicationId = "com.alastor.ctmforge"
         minSdk = 28
         targetSdk = 36
-        versionCode = 4
-        versionName = "Fusion Firestarter"
+        versionCode = 5
+        versionName = "Overlay"
     }
 
     signingConfigs {
