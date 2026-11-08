@@ -13,7 +13,7 @@
 
 namespace ctm {
 
-enum class Method : uint8_t { None, Ctm, Horizontal, Vertical, HV, VH, Top, Random, Repeat, Fixed };
+enum class Method : uint8_t { None, Ctm, Horizontal, Vertical, HV, VH, Top, Random, Repeat, Fixed, Overlay };
 
 struct SheetSpec {
     Method method = Method::None;
@@ -21,6 +21,7 @@ struct SheetSpec {
     uint8_t rows = 0;
     uint16_t count = 0;
     bool innerSeams = false;
+    bool overlay = false;  // drawn as an extra quad on top of the base texture (OptiFine overlay methods)
 };
 
 struct Int3 {
@@ -95,7 +96,7 @@ inline bool parseSheetPath(const char* path, size_t len, SheetSpec& out) {
     static constexpr Name kNames[] = {
         {"ctm", Method::Ctm}, {"horizontal", Method::Horizontal}, {"vertical", Method::Vertical},
         {"hv", Method::HV}, {"vh", Method::VH}, {"top", Method::Top}, {"random", Method::Random},
-        {"repeat", Method::Repeat}, {"fixed", Method::Fixed},
+        {"repeat", Method::Repeat}, {"fixed", Method::Fixed}, {"overlay", Method::Overlay},
     };
     Method method = Method::None;
     for (const auto& n : kNames) {
@@ -115,15 +116,18 @@ inline bool parseSheetPath(const char* path, size_t len, SheetSpec& out) {
     if (!readInt(c, rows) || c >= slash || *c != '-') return false;
     ++c;
     if (!readInt(c, count)) return false;
-    bool seams = false;
+    bool seams = false, overlay = false;
     while (c < slash) {
-        if (*c == '-' && c + 1 < slash && c[1] == 's') { seams = true; c += 2; } else { ++c; }
+        if (*c == '-' && c + 1 < slash && c[1] == 's') { seams = true; c += 2; }
+        else if (*c == '-' && c + 1 < slash && c[1] == 'o') { overlay = true; c += 2; }
+        else { ++c; }
     }
     if (cols < 1 || rows < 1 || cols > 64 || rows > 64 || count < 1 || count > cols * rows) return false;
     const int need = method == Method::Ctm ? 47 : method == Method::HV || method == Method::VH ? 7
-                   : method == Method::Horizontal || method == Method::Vertical ? 4 : method == Method::Top ? 2 : 1;
+                   : method == Method::Horizontal || method == Method::Vertical ? 4 : method == Method::Top ? 2
+                   : method == Method::Overlay ? 17 : 1;
     if (count < need) return false;
-    out = {method, static_cast<uint8_t>(cols), static_cast<uint8_t>(rows), static_cast<uint16_t>(count), seams};
+    out = {method, static_cast<uint8_t>(cols), static_cast<uint8_t>(rows), static_cast<uint16_t>(count), seams, overlay};
     return true;
 }
 
@@ -224,6 +228,93 @@ int selectTile(const SheetSpec& s, const FaceFrame& f, Int3 pos, Match&& match) 
     case Method::Fixed:
     default:
         return 0;
+    }
+}
+
+// ------------------------------------------------------------------ overlays
+// OptiFine's overlay methods draw the overlay on top of the base texture.
+// different(q) = true when the block at q is NOT the base block (a transition).
+// Returns how many overlay quads to emit (0..3) and writes their tile indices.
+//
+// method=overlay uses 17 tiles: 13 side pieces + 4 corner pieces. A side piece
+// is drawn where that side's neighbour is different; corners fill diagonals.
+// Tile layout (OptiFine / MCPatcher, also what Continuity implements):
+//   0 corner D+R   1 D        2 corner L+D   3 D R     4 L D
+//   5 L D R        6 L D U    7 R            8 L D R U  9 L
+//  10 R U         11 L U     12 D R U       13 L R U   14 corner R+U
+//  15 U           16 corner L+U
+// overlay_ctm reuses the 47-tile table with "different" as the connection test.
+template <class Different>
+int overlayTiles(const SheetSpec& s, const FaceFrame& f, Int3 pos, Different&& different, int tiles[3]) {
+    switch (s.method) {
+    case Method::Ctm: {  // overlay_ctm
+        const Int3 dirs[4] = {f.left, f.down, f.right, f.up};
+        int bits = 0;
+        for (int i = 0; i < 4; ++i)
+            if (different(pos + dirs[i])) bits |= 1 << (i * 2);
+        for (int i = 0; i < 4; ++i) {
+            const int j = (i + 1) % 4;
+            if ((bits >> (i * 2) & 1) && (bits >> (j * 2) & 1) && different(pos + dirs[i] + dirs[j]))
+                bits |= 1 << (i * 2 + 1);
+        }
+        tiles[0] = kCtm47[bits];
+        return 1;
+    }
+    case Method::Overlay: {
+        const int mask = (different(pos + f.left) ? 1 : 0) | (different(pos + f.down) ? 2 : 0) |
+                         (different(pos + f.right) ? 4 : 0) | (different(pos + f.up) ? 8 : 0);
+        if (mask == 0) return 0;  // all neighbours match: no transition, no overlay
+        int n = 0;
+        switch (mask) {
+        case 15: tiles[n++] = 8; break;   // L D R U
+        case 7: tiles[n++] = 5; break;    // L D R
+        case 11: tiles[n++] = 6; break;   // L D U
+        case 13: tiles[n++] = 13; break;  // L R U
+        case 14: tiles[n++] = 12; break;  // D R U
+        case 5: tiles[n++] = 9; tiles[n++] = 7; break;   // L + R
+        case 10: tiles[n++] = 1; tiles[n++] = 15; break; // D + U
+        case 3: tiles[n++] = 4; break;    // L D
+        case 6: tiles[n++] = 3; break;    // D R
+        case 12: tiles[n++] = 10; break;  // R U
+        case 9: tiles[n++] = 11; break;   // L U
+        case 1: tiles[n++] = 9; break;    // L
+        case 2: tiles[n++] = 1; break;    // D
+        case 4: tiles[n++] = 7; break;    // R
+        case 8: tiles[n++] = 15; break;   // U
+        }
+        // Corner pieces, only for the one-side and two-adjacent-side cases
+        // (matching OptiFine: three or more sides use a single side tile).
+        const bool ld = different(pos + f.left + f.down);
+        const bool dr = different(pos + f.down + f.right);
+        const bool ru = different(pos + f.right + f.up);
+        const bool lu = different(pos + f.left + f.up);
+        switch (mask) {
+        case 3: if (ld) tiles[n++] = 2; break;
+        case 6: if (dr) tiles[n++] = 0; break;
+        case 12: if (ru) tiles[n++] = 14; break;
+        case 9: if (lu) tiles[n++] = 16; break;
+        case 1:
+            if (ld) tiles[n++] = 2;
+            if (lu) tiles[n++] = 16;
+            break;
+        case 2:
+            if (ld) tiles[n++] = 2;
+            if (dr) tiles[n++] = 0;
+            break;
+        case 4:
+            if (dr) tiles[n++] = 0;
+            if (ru) tiles[n++] = 14;
+            break;
+        case 8:
+            if (ru) tiles[n++] = 14;
+            if (lu) tiles[n++] = 16;
+            break;
+        }
+        return n;
+    }
+    default:  // overlay_random / overlay_repeat / overlay_fixed: one full-face overlay quad
+        tiles[0] = selectTile(s, f, pos, [](Int3) { return false; });
+        return 1;
     }
 }
 

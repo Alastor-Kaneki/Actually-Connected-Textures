@@ -59,6 +59,7 @@ struct Config {
     bool enabled = true;
     bool blocks = true;
     bool panes = true;
+    bool overlays = true;
 };
 Config g_cfg;
 std::atomic<bool> g_enabled{false};
@@ -107,6 +108,13 @@ struct PaneState {
 struct ThreadState {
     int terrainDepth = 0;  // > 0 while RenderChunkBuilder::build runs on this thread
     PaneState pane;
+    struct OverlayState {
+        bool active = false;
+        int count = 0;                     // overlay sheets for the current face, in rule order
+        const void* sheets[4] = {};        // TextureUVCoordinateSet per overlay sheet
+        ctm::SheetSpec specs[4] = {};
+        ctm::UvRect rects[4] = {};
+    } overlay;
 };
 thread_local ThreadState t_state;
 
@@ -153,6 +161,50 @@ const void* findSheetVariation(const void* graphics, size_t face, uint32_t varia
         if (sheetSpecOf(uv, spec)) return uv;
     }
     return nullptr;
+}
+
+// All sheets of one face/variant: the first non-overlay sheet (the face's CTM
+// tile source) plus every overlay sheet, in pack order.
+struct SheetSet {
+    const void* normal = nullptr;
+    int overlayCount = 0;
+    const void* overlays[4] = {};
+    ctm::SheetSpec specs[4] = {};
+};
+
+SheetSet findSheets(const void* graphics, size_t face, uint32_t variant) {
+    SheetSet out;
+    const char* fb = at<const char*>(graphics, off::BG_Faces);
+    const char* fe = at<const char*>(graphics, off::BG_Faces + 8);
+    if (!fb || fe <= fb) return out;
+    const size_t nf = static_cast<size_t>(fe - fb) / off::BG_FaceItemSize;
+    if (!nf) return out;
+    const char* item = fb + (face < nf ? face : nf - 1) * off::BG_FaceItemSize;
+    const char* vb = at<const char*>(item, off::FaceItem_Variants);
+    const char* ve = at<const char*>(item, off::FaceItem_Variants + 8);
+    if (!vb || ve <= vb) return out;
+    const size_t nv = static_cast<size_t>(ve - vb) / 24;
+    if (!nv) return out;
+    const char* vec = vb + (variant < nv ? variant : 0) * 24;
+    const char* ub = at<const char*>(vec, 0);
+    const char* ue = at<const char*>(vec, 8);
+    if (!ub || ue <= ub) return out;
+    const size_t n = static_cast<size_t>(ue - ub) / off::UV_Size;
+    for (size_t i = 0; i < n && i < 256; ++i) {
+        const char* uv = ub + i * off::UV_Size;
+        ctm::SheetSpec spec;
+        if (!sheetSpecOf(uv, spec)) continue;
+        if (spec.overlay) {
+            if (out.overlayCount < 4) {
+                out.overlays[out.overlayCount] = uv;
+                out.specs[out.overlayCount] = spec;
+                ++out.overlayCount;
+            }
+        } else if (!out.normal) {
+            out.normal = uv;
+        }
+    }
+    return out;
 }
 
 bool graphicsHasSheet(const void* graphics) {
@@ -237,13 +289,52 @@ struct UvCopy {
     ~UvCopy() { g_uvDtor(storage); }
 };
 
+// Emits the overlay quad(s) for one face, on top of the base quad the caller
+// just drew. The overlay sits 0.001 blocks outside the face (the same offset
+// the game itself uses for pane caps) so it wins the depth test regardless of
+// the depth comparison the render layer uses.
+constexpr float kOverlayOffset = 0.001f;
+
+template <int F>
+void emitOverlay(void* bt, void* tess, const void* block, const float* p, const void* sheet,
+                 const ctm::SheetSpec& spec, const ctm::UvRect& rect) {
+    const FaceFn orig = g_faceOrig[F];
+    void* region = at<void*>(bt, off::BT_Region);
+    const void* legacy = legacyOf(block);
+    if (!region || !legacy || !p) return;
+    const ctm::Int3 pos{static_cast<int>(std::floor(p[0])), static_cast<int>(std::floor(p[1])),
+                        static_cast<int>(std::floor(p[2]))};
+    auto different = [&](ctm::Int3 q) { return legacyOf(blockAt(region, q)) != legacy; };
+    int tiles[3] = {};
+    const int n = ctm::overlayTiles(spec, ctm::kFaceFrames[F], pos, different, tiles);
+    const uint16_t w = at<uint16_t>(sheet, off::UV_W), h = at<uint16_t>(sheet, off::UV_H);
+    const ctm::Int3 normal = ctm::kFaceFrames[F].normal;
+    const float p2[3] = {p[0] + normal.x * kOverlayOffset, p[1] + normal.y * kOverlayOffset,
+                         p[2] + normal.z * kOverlayOffset};
+    FlipGuard guard(bt, F);
+    for (int i = 0; i < n; ++i) {
+        const ctm::UvRect r = ctm::tileRect(spec, tiles[i], rect);
+        UvCopy uv(sheet);
+        at<float>(uv.storage, off::UV_U0) = r.u0;
+        at<float>(uv.storage, off::UV_V0) = r.v0;
+        at<float>(uv.storage, off::UV_U1) = r.u1;
+        at<float>(uv.storage, off::UV_V1) = r.v1;
+        at<uint16_t>(uv.storage, off::UV_W) = static_cast<uint16_t>(w / spec.cols ? w / spec.cols : 1);
+        at<uint16_t>(uv.storage, off::UV_H) = static_cast<uint16_t>(h / spec.rows ? h / spec.rows : 1);
+        at<uint8_t>(uv.storage, off::UV_Isotropic) = 0;
+        orig(bt, tess, block, p2, uv.storage);
+    }
+}
+
 // ------------------------------------------------------------------ hooks
 template <int F>
 void faceDetour(void* bt, void* tess, const void* block, const float* p, const void* tex) {
     const FaceFn orig = g_faceOrig[F];
+    auto& ov = t_state.overlay;
+    const bool internal = tex && bt && at<uint8_t>(bt, off::BT_UseInternalTexture) &&
+                          tex == static_cast<char*>(bt) + off::BT_InternalTexture;
     ctm::SheetSpec spec;
-    if (tex && bt && sheetSpecOf(tex, spec) &&
-        !(at<uint8_t>(bt, off::BT_UseInternalTexture) && tex == static_cast<char*>(bt) + off::BT_InternalTexture)) {
+    if (tex && bt && sheetSpecOf(tex, spec) && !internal) {
         const int tile = g_enabled.load(std::memory_order_relaxed) && g_cfg.blocks ? cubeTile(bt, block, p, F, spec)
                                                                                    : ctm::defaultTile(spec);
         const ctm::UvRect r = ctm::tileRect(spec, tile, rectOf(tex));
@@ -258,22 +349,51 @@ void faceDetour(void* bt, void* tess, const void* block, const float* p, const v
         at<uint8_t>(uv.storage, off::UV_Isotropic) = 0;
         FlipGuard guard(bt, F);
         orig(bt, tess, block, p, uv.storage);
-        return;
+    } else {
+        orig(bt, tess, block, p, tex);
     }
-    orig(bt, tess, block, p, tex);
+    // Overlays go on top of the face (its CTM tile or the plain base texture).
+    if (ov.active) {
+        if (!internal && t_state.terrainDepth > 0 && g_enabled.load(std::memory_order_relaxed) && g_cfg.overlays) {
+            for (int i = 0; i < ov.count; ++i)
+                emitOverlay<F>(bt, tess, block, p, ov.sheets[i], ov.specs[i], ov.rects[i]);
+        }
+        ov.active = false;
+    }
 }
 
 const void* getTextureDetour(void* graphics, const int* pos, size_t face, uintptr_t variant) {
+    ThreadState& ts = t_state;
+    ts.overlay.active = false;
+    ts.overlay.count = 0;
     const void* res = g_getTextureOrig(graphics, pos, face, static_cast<uint32_t>(variant));
     if (!graphics || !g_enabled.load(std::memory_order_relaxed)) return res;
-    ThreadState& ts = t_state;
     PaneState& ps = ts.pane;
     ctm::SheetSpec spec;
     const void* sheet = nullptr;
     if (res && sheetSpecOf(res, spec)) {
         sheet = res;  // "direct" pack: the block's texture is the sheet itself
     } else if (ts.terrainDepth > 0 && (ps.active ? g_cfg.panes : g_cfg.blocks)) {
-        sheet = findSheetVariation(graphics, face, static_cast<uint32_t>(variant));
+        const SheetSet set = findSheets(graphics, face, static_cast<uint32_t>(variant));
+        sheet = set.normal;
+        if (set.overlayCount > 0 && !ps.active) {
+            ts.overlay.active = true;
+            ts.overlay.count = set.overlayCount;
+            for (int i = 0; i < set.overlayCount; ++i) {
+                ts.overlay.sheets[i] = set.overlays[i];
+                ts.overlay.specs[i] = set.specs[i];
+                ts.overlay.rects[i] = rectOf(set.overlays[i]);
+            }
+        }
+        if (!sheet && ts.overlay.active) {
+            // Overlay-only pack: keep the base texture and add the overlays on top.
+            if (!g_reportedSheet.exchange(true, std::memory_order_relaxed)) {
+                const std::string line = "Connected textures active - first overlay sheet in use: " + *uvPath(set.overlays[0]);
+                LOGI("%s", line.c_str());
+                status(line.c_str());
+            }
+            return res;
+        }
     }
     if (!sheet) return res;
     if (!g_reportedSheet.exchange(true, std::memory_order_relaxed)) {
@@ -408,7 +528,7 @@ void loadConfig(const char* root) {
     } else {
         ::mkdir(dir.c_str(), 0775);
         if (FILE* w = std::fopen(path.c_str(), "wb")) {
-            std::fputs("{\n  \"enabled\": true,\n  \"blocks\": true,\n  \"panes\": true\n}\n", w);
+            std::fputs("{\n  \"enabled\": true,\n  \"blocks\": true,\n  \"panes\": true,\n  \"overlays\": true\n}\n", w);
             std::fclose(w);
         }
         return;
@@ -427,6 +547,7 @@ void loadConfig(const char* root) {
     flag("enabled", g_cfg.enabled);
     flag("blocks", g_cfg.blocks);
     flag("panes", g_cfg.panes);
+    flag("overlays", g_cfg.overlays);
 }
 
 template <class Fn>
@@ -535,7 +656,7 @@ CTM_EXPORT bool PLMod_Load(JavaVM*, const PLModInfo* info) {
     const char* root = info ? info->mod_root_path : nullptr;
     if (root && *root) g_statusPath = std::string(root) + "/status.txt";
     if (!gameProcess()) return true;
-    status("Connected Textures 1.0.2 for Minecraft 1.26.60 / 1.26.62", true);
+    status("Connected Textures 1.1.0 for Minecraft 1.26.60 / 1.26.62", true);
     loadConfig(root);
     LOGI("loading (blocks=%d panes=%d enabled=%d)", g_cfg.blocks, g_cfg.panes, g_cfg.enabled);
     trySetup();

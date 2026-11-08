@@ -26,12 +26,13 @@ object Ctm {
         3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
     )
 
-    data class Spec(val method: String, val cols: Int, val rows: Int, val count: Int, val innerSeams: Boolean)
+    data class Spec(val method: String, val cols: Int, val rows: Int, val count: Int, val innerSeams: Boolean, val overlay: Boolean = false)
 
-    /** Parses ".../ctm/<method>-<cols>x<rows>-<count>[-s]/<name>". */
+    /** Parses ".../ctm/<method>-<cols>x<rows>-<count>[-s][-o]/<name>". */
     fun parseSpec(path: String): Spec? {
-        val m = Regex("/ctm/([a-z]+)-(\\d+)x(\\d+)-(\\d+)(-s)?/[^/]+$").find(path) ?: return null
-        return Spec(m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3].toInt(), m.groupValues[4].toInt(), m.groupValues[5].isNotEmpty())
+        val m = Regex("/ctm/([a-z]+)-(\\d+)x(\\d+)-(\\d+)(-s)?(-o)?/[^/]+$").find(path) ?: return null
+        return Spec(m.groupValues[1], m.groupValues[2].toInt(), m.groupValues[3].toInt(), m.groupValues[4].toInt(),
+                    m.groupValues[5].isNotEmpty(), m.groupValues[6].isNotEmpty())
     }
 
     /**
@@ -88,6 +89,56 @@ object Ctm {
         return h
     }
 
+    /**
+     * OptiFine overlay tiles for a south-facing face at (x, y): 0..3 tiles to draw on top
+     * of the cell's base texture, in order. [solid] says which cells hold the base block;
+     * a transition happens where a neighbour is not solid. Mirrors CtmLogic.hpp.
+     */
+    fun overlayTiles(spec: Spec, x: Int, y: Int, solid: (Int, Int) -> Boolean): IntArray {
+        fun diff(dx: Int, dy: Int) = !solid(x + dx, y + dy)
+        return when (spec.method) {
+            "ctm" -> { // overlay_ctm: the 47-tile table with the connection test inverted
+                var bits = 0
+                if (diff(-1, 0)) bits = bits or 1
+                if (diff(0, -1)) bits = bits or 4
+                if (diff(1, 0)) bits = bits or 16
+                if (diff(0, 1)) bits = bits or 64
+                if (diff(-1, 0) && diff(0, -1) && diff(-1, -1)) bits = bits or 2
+                if (diff(0, -1) && diff(1, 0) && diff(1, -1)) bits = bits or 8
+                if (diff(1, 0) && diff(0, 1) && diff(1, 1)) bits = bits or 32
+                if (diff(0, 1) && diff(-1, 0) && diff(-1, 1)) bits = bits or 128
+                intArrayOf(CTM47[bits])
+            }
+            "overlay" -> {
+                val mask = (if (diff(-1, 0)) 1 else 0) or (if (diff(0, -1)) 2 else 0) or
+                    (if (diff(1, 0)) 4 else 0) or (if (diff(0, 1)) 8 else 0)
+                if (mask == 0) return IntArray(0)
+                val out = ArrayList<Int>()
+                out += when (mask) {
+                    15 -> 8; 7 -> 5; 11 -> 6; 13 -> 13; 14 -> 12
+                    5 -> { out += 9; 7 }
+                    10 -> { out += 1; 15 }
+                    3 -> 4; 6 -> 3; 12 -> 10; 9 -> 11
+                    1 -> 9; 2 -> 1; 4 -> 7; 8 -> 15
+                    else -> 0
+                }
+                val ld = diff(-1, -1); val dr = diff(1, -1); val ru = diff(1, 1); val lu = diff(-1, 1)
+                when (mask) {
+                    3 -> if (ld) out += 2
+                    6 -> if (dr) out += 0
+                    12 -> if (ru) out += 14
+                    9 -> if (lu) out += 16
+                    1 -> { if (ld) out += 2; if (lu) out += 16 }
+                    2 -> { if (ld) out += 2; if (dr) out += 0 }
+                    4 -> { if (dr) out += 0; if (ru) out += 14 }
+                    8 -> { if (ru) out += 14; if (lu) out += 16 }
+                }
+                out.toIntArray()
+            }
+            else -> intArrayOf(wallTile(spec, x, y, solid)) // overlay_random / repeat / fixed
+        }
+    }
+
     /** The preview wall: '#' cells are blocks (row 0 is the top). */
     val PREVIEW_WALL = listOf(
         "##########....###",
@@ -108,7 +159,13 @@ object Ctm {
         }
         val out = ArrayList<Triple<Int, Int, Int>>()
         for (y in 0 until rows) for (x in 0 until wall[0].length) {
-            if (solid(x, y)) out += Triple(x, rows - 1 - y, wallTile(spec, x, y, ::solid))
+            if (!solid(x, y)) continue
+            if (spec.overlay) {
+                // Overlay previews draw each cell's overlay tiles in order, on top of the cell.
+                for (t in overlayTiles(spec, x, y, ::solid)) out += Triple(x, rows - 1 - y, t)
+            } else {
+                out += Triple(x, rows - 1 - y, wallTile(spec, x, y, ::solid))
+            }
         }
         return out
     }

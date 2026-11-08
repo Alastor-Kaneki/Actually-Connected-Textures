@@ -169,6 +169,65 @@ static void unitTests() {
     }
     CHECK(inRect(0.5f, 0.5f, {0.4f, 0.4f, 0.6f, 0.6f}));
     CHECK(!inRect(0.7f, 0.5f, {0.4f, 0.4f, 0.6f, 0.6f}));
+
+    // ---------------------------------------------------------------- overlays
+    CHECK(parse("textures/blocks/ctm/overlay-6x3-17-o/grass_top_overlay", s) && s.method == Method::Overlay &&
+          s.count == 17 && s.overlay);
+    CHECK(parse("textures/blocks/ctm/ctm-8x6-47-o/grass", s) && s.method == Method::Ctm && s.overlay);
+    CHECK(parse("textures/blocks/ctm/ctm-8x6-47-s-o/x", s) && s.innerSeams && s.overlay);
+    CHECK(parse("textures/blocks/ctm/random-4x1-4-o/x", s) && s.method == Method::Random && s.overlay);
+    CHECK(!parse("textures/blocks/ctm/overlay-6x3-16-o/x", s));  // overlay needs all 17 tiles
+
+    SheetSpec ov{Method::Overlay, 6, 3, 17, false, true};
+    const FaceFrame& sf = kFaceFrames[3];  // south: left=-x down=-y right=+x up=+y
+    int tiles[3] = {};
+    // 3x3 wall, centre: all four neighbours match -> no overlay
+    auto full = [](Int3 p) { return p.z == 0 && p.x >= -1 && p.x <= 1 && p.y >= -1 && p.y <= 1; };
+    auto diffFull = [&](Int3 q) { return !full(q); };
+    CHECK(overlayTiles(ov, sf, {0, 0, 0}, diffFull, tiles) == 0);
+    // isolated block: every neighbour is different -> the full overlay tile
+    auto single = [](Int3 p) { return p.x == 0 && p.y == 0 && p.z == 0; };
+    auto diffSingle = [&](Int3 q) { return !single(q); };
+    CHECK(overlayTiles(ov, sf, {0, 0, 0}, diffSingle, tiles) == 1 && tiles[0] == 8);
+    // horizontal row: D and U differ -> tiles D and U (two quads)
+    auto row2 = [](Int3 p) { return p.z == 0 && p.y == 0 && p.x >= -2 && p.x <= 2; };
+    auto diffRow = [&](Int3 q) { return !row2(q); };
+    CHECK(overlayTiles(ov, sf, {0, 0, 0}, diffRow, tiles) == 2 && tiles[0] == 1 && tiles[1] == 15);
+    // vertical column: L and R differ -> tiles L and R
+    auto col2 = [](Int3 p) { return p.z == 0 && p.x == 0 && p.y >= -2 && p.y <= 2; };
+    auto diffCol = [&](Int3 q) { return !col2(q); };
+    CHECK(overlayTiles(ov, sf, {0, 0, 0}, diffCol, tiles) == 2 && tiles[0] == 9 && tiles[1] == 7);
+    // L+D differ and the L+D diagonal differs too: side pair + corner
+    auto square = [](Int3 p) { return p.z == 0 && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1; };
+    auto diffSquare = [&](Int3 q) { return !square(q); };
+    CHECK(overlayTiles(ov, sf, {0, 0, 0}, diffSquare, tiles) == 2 && tiles[0] == 4 && tiles[1] == 2);
+    // only D differs: D tile plus both lower corners (three quads)
+    auto tee = [](Int3 p) {
+        return p.z == 0 && ((p.x == 0 && p.y == 0) || (p.x == 1 && p.y == 0) || (p.x == -1 && p.y == 0) ||
+                            (p.x == 0 && p.y == 1));
+    };
+    auto diffTee = [&](Int3 q) { return !tee(q); };
+    CHECK(overlayTiles(ov, sf, {0, 0, 0}, diffTee, tiles) == 3 && tiles[0] == 1 && tiles[1] == 2 && tiles[2] == 0);
+    // three differing sides: one side tile, no corners
+    auto upOnly = [](Int3 p) { return p.z == 0 && p.x == 0 && p.y >= 0 && p.y <= 1; };
+    auto diffUpOnly = [&](Int3 q) { return !upOnly(q); };
+    CHECK(overlayTiles(ov, sf, {0, 0, 0}, diffUpOnly, tiles) == 1 && tiles[0] == 5);
+    // L+D differ but their diagonal matches: side pair only, no corner
+    auto withDiag = [](Int3 p) {
+        return p.z == 0 && ((p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1) || (p.x == -1 && p.y == -1));
+    };
+    auto diffWithDiag = [&](Int3 q) { return !withDiag(q); };
+    CHECK(overlayTiles(ov, sf, {0, 0, 0}, diffWithDiag, tiles) == 1 && tiles[0] == 4);
+
+    // overlay_ctm: same 47-tile table with the connection test inverted
+    SheetSpec oc{Method::Ctm, 8, 6, 47, false, true};
+    CHECK(overlayTiles(oc, sf, {0, 0, 0}, diffFull, tiles) == 1 && tiles[0] == 0);
+    CHECK(overlayTiles(oc, sf, {0, 0, 0}, diffSingle, tiles) == 1 && tiles[0] == 26);
+    // overlay_random/repeat/fixed: exactly one overlay quad
+    SheetSpec ornd{Method::Random, 4, 1, 4, false, true};
+    CHECK(overlayTiles(ornd, sf, {3, 7, -2}, diffSingle, tiles) == 1 && tiles[0] >= 0 && tiles[0] < 4);
+    SheetSpec ofix{Method::Fixed, 1, 1, 1, false, true};
+    CHECK(overlayTiles(ofix, sf, {0, 0, 0}, diffFull, tiles) == 1 && tiles[0] == 0);
 }
 
 static void randomWorlds(unsigned seed) {

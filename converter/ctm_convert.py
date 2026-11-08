@@ -566,6 +566,7 @@ class Rule:
     source: str = "optifine"
     base: "Tex | None" = None                            # explicit base texture (Fusion)
     layout: "str | None" = None                          # Fusion layout of the tiles
+    overlay: bool = False                                # OptiFine overlay* methods
 
 
 def parse_properties(text: str) -> dict:
@@ -650,6 +651,11 @@ def main_texture_path(pack: JavaPack, block: str) -> str | None:
     return p if pack.get(p) is not None else None
 
 
+def skipped_tex() -> Tex:
+    """OptiFine's <skip> overlay tile: fully transparent, so nothing is drawn."""
+    return Tex([Image.new("RGBA", (16, 16), (0, 0, 0, 0))])
+
+
 def read_rules(pack: JavaPack, log: list[str]) -> list[Rule]:
     rules = []
     paths = sorted(p for p in pack.files if p.endswith(".properties")
@@ -659,8 +665,9 @@ def read_rules(pack: JavaPack, log: list[str]) -> list[Rule]:
         rule_dir = path.rsplit("/", 1)[0]
         props = parse_properties(pack.files[path].decode("utf-8", "replace"))
         method = props.get("method", "ctm").lower().replace("horizontal+vertical", "hv").replace("vertical+horizontal", "vh")
-        if method.startswith("overlay"):
-            log.append(f"skip {path}: overlay methods are not supported")
+        overlay = method.startswith("overlay")
+        if overlay and method not in ("overlay", "overlay_ctm", "overlay_random", "overlay_repeat", "overlay_fixed"):
+            log.append(f"skip {path}: unknown method '{method}'")
             continue
         blocks = block_names(props.get("matchBlocks", ""))
         textures = []
@@ -677,20 +684,26 @@ def read_rules(pack: JavaPack, log: list[str]) -> list[Rule]:
             if unsupported in props:
                 log.append(f"note {path}: '{unsupported}' is ignored")
         r = Rule(path, props, method, blocks, faces or set(FACE_NAMES), pack=pack, textures=textures)
+        r.overlay = overlay
         connect = props.get("connect", "block").lower()
         if connect not in ("block", ""):
             log.append(f"note {path}: connect={connect} is treated as connect=block")
+        if overlay:
+            for k in ("connectTiles", "connectBlocks", "tintIndex", "tintBlock", "layer"):
+                if k in props:
+                    log.append(f"note {path}: '{k}' is ignored")
         r.inner_seams = props.get("innerSeams", "false").lower() == "true"
         base_path = main_texture_path(pack, blocks[0]) if blocks else (
             f"assets/minecraft/textures/block/{textures[0]}.png" if textures and pack.get(
                 f"assets/minecraft/textures/block/{textures[0]}.png") is not None else None)
         toks = expand_tile_list(props.get("tiles", ""))
-        tile_paths = [resolve_tile(pack, rule_dir, namespace, t, base_path) for t in toks]
+        tile_paths = [("<skip>" if overlay and t == "<skip>"
+                       else resolve_tile(pack, rule_dir, namespace, t, base_path)) for t in toks]
         if any(t is None for t in tile_paths) or not tile_paths:
             log.append(f"skip {path}: missing tile images")
             continue
         try:
-            r.tiles = [load_tex(pack, t) for t in tile_paths]
+            r.tiles = [skipped_tex() if t == "<skip>" else load_tex(pack, t) for t in tile_paths]
         except Exception as e:  # noqa: BLE001
             log.append(f"skip {path}: unreadable tile image ({e})")
             continue
@@ -699,10 +712,10 @@ def read_rules(pack: JavaPack, log: list[str]) -> list[Rule]:
                 r.base = load_tex(pack, base_path)
             except Exception:  # noqa: BLE001
                 r.base = None
-        if method == "random":
+        if method in ("random", "overlay_random"):
             w = [int(x) for x in re.split(r"[\s,]+", props.get("weights", "")) if x.isdigit()]
             r.weights = w if len(w) == len(r.tiles) else [1] * len(r.tiles)
-        if method == "repeat":
+        if method in ("repeat", "overlay_repeat"):
             r.width, r.height = int(props.get("width", 1)), int(props.get("height", 1))
         rules.append(r)
     return rules
@@ -1194,6 +1207,7 @@ class Layout:
     build: object         # list[Image] (one per input) -> list[Image] (runtime tiles)
     cols: int
     count: int
+    overlay: bool = False
 
 
 def rule_layout(rule: Rule, log: list[str]) -> Layout | None:
@@ -1260,6 +1274,40 @@ def rule_layout(rule: Rule, log: list[str]) -> Layout | None:
                 out += [im] * c
             return out
         return Layout("random", tiles, expand, min(8, n), n)
+    if m == "overlay":
+        if len(tiles) < 17:
+            log.append(f"skip {rule.path}: overlay needs 17 tiles, found {len(tiles)}")
+            return None
+        return Layout("overlay", tiles[:17], ident, 6, 17, True)
+    if m == "overlay_ctm":
+        if len(tiles) < 47:
+            log.append(f"skip {rule.path}: overlay_ctm needs 47 tiles, found {len(tiles)}")
+            return None
+        return Layout("ctm", tiles[:47], ident, 8, 47, True)
+    if m == "overlay_fixed":
+        return Layout("fixed", tiles[:1], ident, 1, 1, True)
+    if m == "overlay_repeat":
+        n = rule.width * rule.height
+        if rule.width <= 0 or rule.height <= 0 or len(tiles) < n:
+            log.append(f"skip {rule.path}: overlay_repeat needs width x height ({rule.width} x {rule.height}) tiles, found {len(tiles)}")
+            return None
+        return Layout("repeat", tiles[:n], ident, rule.width, n, True)
+    if m == "overlay_random":
+        g = 0
+        for w in rule.weights:
+            g = math.gcd(g, w)
+        counts = [max(1, w // max(g, 1)) for w in rule.weights]
+        if sum(counts) > 64:
+            log.append(f"note {rule.path}: random weights too fine, using equal weights")
+            counts = [1] * len(tiles)
+        n = sum(counts)
+
+        def expand(ims, counts=counts):
+            out = []
+            for im, c in zip(ims, counts):
+                out += [im] * c
+            return out
+        return Layout("random", tiles, expand, min(8, n), n, True)
     log.append(f"skip {rule.path}: unknown method '{m}'")
     return None
 
@@ -1326,7 +1374,6 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
     terrain: dict[str, dict] = {}
     blocks_json: dict[str, dict] = {"format_version": "1.21.120"}
     flipbooks: list[dict] = []
-    assigned: dict[tuple, set] = {}
     array_aliases: dict[tuple, str] = {}
     rule_count: dict[str, int] = {}
     summary = {"blocks": {}, "methods": {}, "animated": []}
@@ -1336,6 +1383,9 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
         im.save(b, "PNG", optimize=True)
         return b.getvalue()
 
+    # Pass 1: build every rule's sheet and collect the sheets that apply to each
+    # (block, face). The first non-overlay rule wins a face; overlays all stack.
+    block_faces: dict[tuple, dict] = {}
     for rule in rules:
         layout = rule_layout(rule, log)
         if not layout:
@@ -1344,6 +1394,9 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
         if not targets:
             continue
         animated = any(t.animated for t in layout.inputs)
+        if animated and layout.overlay:
+            log.append(f"note {rule.path}: overlay animations are not supported, using the first frame")
+            animated = False
         if animated:
             states, frames, tpf, blend = merge_timeline(layout.inputs)
             n = math.isqrt(layout.count - 1) + 1
@@ -1359,30 +1412,17 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
             built = layout.build([t.first for t in layout.inputs])
             sheet, cols, rows = build_sheet(built, layout.cols)
             tile0 = built[0]
-        spec = f"{layout.method}-{cols}x{rows}-{layout.count}" + ("-s" if rule.inner_seams else "")
+        spec = f"{layout.method}-{cols}x{rows}-{layout.count}" + ("-s" if rule.inner_seams else "") + ("-o" if layout.overlay else "")
         strip_path = None
+        contributed = set()
         for tg in targets:
             block = tg.block
-            faces = set(tg.faces) - assigned.get((block, tg.index), set())
-            if not faces:
-                log.append(f"note {rule.path}: {block} faces already covered by an earlier rule")
-                continue
-            entry = blocks_json.get(block) or json.loads(json.dumps(VANILLA_BLOCKS[block]))
-            aliases = face_aliases(entry)
-            tex = entry.get("textures")
-            if isinstance(tex, str):
-                tex = {f: tex for f in FACE_NAMES}
-            if not isinstance(tex, dict):
-                log.append(f"skip {rule.path}: '{block}' has no textures in blocks.json")
-                continue
             nth = rule_count.get(block, 0)
             rule_count[block] = nth + 1
-            assigned.setdefault((block, tg.index), set()).update(faces)
             stem = f"{slug}_{block}" + (f"_{nth + 1}" if nth else "")
             sheet_path = f"textures/blocks/ctm/{spec}/{stem}"
             base_path = f"textures/blocks/ctm/base/{stem}"
             files[sheet_path + ".png"] = png(sheet)
-            alias = f"ctm_{stem}"
             base_tex = None
             if tg.texture:
                 bp = f"assets/minecraft/textures/block/{tg.texture}.png"
@@ -1392,55 +1432,110 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
                     except Exception:  # noqa: BLE001
                         base_tex = None
             base_img = base_tex.first if base_tex is not None else tile0
+            if animated and strip_path is None:
+                # parseable like the sheet itself, in case the game reports the flipbook's path
+                strip_path = f"textures/blocks/ctm/{spec}/anim/{stem}"
+                files[strip_path + ".png"] = png(stack(sheets))
+            if direct and layout.overlay:
+                log.append(f"note {rule.path}: overlay rules are not supported in direct mode")
+                continue
+            entry = {
+                "layout": layout, "spec": spec, "sheet_path": sheet_path, "base_path": base_path,
+                "base_img": base_img, "tile0": tile0, "base_tex": base_tex, "animated": animated,
+                "strip_path": strip_path,
+                "frames": frames if animated else None, "tpf": tpf if animated else 1,
+                "blend": blend if animated else False,
+            }
+            faces = block_faces.setdefault((block, tg.index), {})
+            for f in tg.faces:
+                lst = faces.setdefault(f, [])
+                if not layout.overlay and any(not e["layout"].overlay for e in lst):
+                    log.append(f"note {rule.path}: {block} {f} already covered by an earlier rule")
+                    continue
+                if direct and lst:
+                    continue  # direct mode has no variations list to merge into
+                lst.append(entry)
+                contributed.add(block)
+        key = f"fusion:{rule.layout}" if rule.source == "fusion" and rule.layout else rule.method
+        summary["methods"][key] = summary["methods"].get(key, 0) + len(contributed)
+        for block in sorted(contributed):
+            if animated and block not in summary["animated"]:
+                summary["animated"].append(block)
+            summary["blocks"][block] = spec
+
+    # Pass 2: one alias per block and face set, merging all the sheets that apply.
+    for (block, index), faces in block_faces.items():
+        groups: dict[tuple, list] = {}
+        for f, entries in faces.items():
+            # Faces with different vanilla textures need their own base, so an
+            # overlay-only block (e.g. grass) still shows each face's own texture.
+            base_key = next((e["base_path"] for e in entries if not e["layout"].overlay), None)
+            if base_key is None:
+                paths = entry_paths(face_aliases(VANILLA_BLOCKS[block]).get(f))
+                base_key = paths[0] if paths else ""
+            key = (tuple(e["sheet_path"] for e in entries), base_key)
+            groups.setdefault(key, []).append(f)
+        entry = blocks_json.get(block) or json.loads(json.dumps(VANILLA_BLOCKS[block]))
+        tex = entry.get("textures")
+        if isinstance(tex, str):
+            tex = {f: tex for f in FACE_NAMES}
+        if not isinstance(tex, dict):
+            log.append(f"skip: '{block}' has no textures in blocks.json")
+            continue
+        if "carried_textures" not in entry:
+            entry["carried_textures"] = json.loads(json.dumps(VANILLA_BLOCKS[block].get("textures")))
+        for gi, (key, group_faces) in enumerate(groups.items()):
+            entries = faces[group_faces[0]]
+            alias = f"ctm_{slug}_{block}" + (f"_{index}" if index is not None else "") + (f"_{gi}" if gi else "")
+            normal = next((e for e in entries if not e["layout"].overlay), None)
             if direct:  # fallback layout: the block's texture is the sheet itself (needs the mod)
-                value = sheet_path
+                value = entries[0]["sheet_path"]
             else:
-                files[base_path + ".png"] = png(base_img.resize(tile0.size, Image.NEAREST))
-                value = {"variations": [
-                    {"path": base_path, "weight": 1000000},
-                    {"path": sheet_path, "weight": 0.05},
-                ]}
-            vanilla_alias = face_aliases(VANILLA_BLOCKS[block]).get(min(faces))
-            entries = alias_entries(vanilla_alias) if tg.index is not None else None
-            array = entries is not None and len(entries) > 1
+                if normal is not None:
+                    files[normal["base_path"] + ".png"] = png(normal["base_img"].resize(normal["tile0"].size, Image.NEAREST))
+                    base_value = normal["base_path"]
+                else:
+                    # Overlay-only: each face's own vanilla texture, so the block
+                    # looks vanilla without the mod. A custom base texture in the
+                    # pack still reaches it through the plain texture copies below.
+                    base_value = key[1]
+                    if not base_value:
+                        log.append(f"skip: '{block}' has no vanilla base texture")
+                        continue
+                value = {"variations": [{"path": base_value, "weight": 1000000}] +
+                                       [{"path": p, "weight": 0.05} for p in key[0]]}
+            vanilla_alias = face_aliases(VANILLA_BLOCKS[block]).get(min(group_faces))
+            arr_entries = alias_entries(vanilla_alias) if index is not None else None
+            array = arr_entries is not None and len(arr_entries) > 1
             if array and (block, vanilla_alias) in array_aliases:
                 # another entry of the same array alias was converted already: share its alias
                 alias = array_aliases[(block, vanilla_alias)]
-                terrain[alias]["textures"][tg.index] = value
+                terrain[alias]["textures"][index] = value
             elif array:
-                arr = list(entries)
-                arr[tg.index] = value
+                arr = list(arr_entries)
+                arr[index] = value
                 terrain[alias] = {"textures": arr}
                 array_aliases[(block, vanilla_alias)] = alias
             else:
                 terrain[alias] = {"textures": value}
-            if animated:
-                if strip_path is None:
-                    # parseable like the sheet itself, in case the game reports the flipbook's path
-                    strip_path = f"textures/blocks/ctm/{spec}/anim/{stem}"
-                    files[strip_path + ".png"] = png(stack(sheets))
-                idx = tg.index if array else None
-                if not direct and base_tex is not None and base_tex.animated:
-                    bst, bfr, btpf, bbl = merge_timeline([base_tex])
-                    bstrip = f"textures/blocks/ctm/base/anim/{stem}"
-                    files[bstrip + ".png"] = png(stack([base_tex.frames[st[0]].resize(tile0.size, Image.NEAREST)
-                                                         for st in bst]))
+            for pos, e in enumerate(entries):
+                if not e["animated"]:
+                    continue
+                idx = index if array else None
+                if not direct and e["base_tex"] is not None and e["base_tex"].animated:
+                    bst, bfr, btpf, bbl = merge_timeline([e["base_tex"]])
+                    bstrip = f"textures/blocks/ctm/base/anim/{slug}_{block}"
+                    files[bstrip + ".png"] = png(stack([e["base_tex"].frames[st[0]].resize(e["tile0"].size, Image.NEAREST)
+                                                        for st in bst]))
                     flipbooks.append(flipbook_entry(bstrip, alias, bfr, btpf, bbl, idx, 0))
                 # the sheet goes last: Bedrock may only play the last entry of one atlas tile
-                flipbooks.append(flipbook_entry(strip_path, alias, frames, tpf, blend, idx, None if direct else 1))
-            if "carried_textures" not in entry:
-                entry["carried_textures"] = json.loads(json.dumps(VANILLA_BLOCKS[block].get("textures")))
-            for f in FACE_NAMES:
-                if f in faces:
-                    tex[f] = alias
-            entry["textures"] = tex if len(set(tex.values())) > 1 else next(iter(tex.values()))
-            entry.pop("isotropic", None)  # random texture rotation would scramble connected tiles
-            blocks_json[block] = entry
-            summary["blocks"][block] = spec
-            key = f"fusion:{rule.layout}" if rule.source == "fusion" and rule.layout else rule.method
-            summary["methods"][key] = summary["methods"].get(key, 0) + 1
-            if animated and block not in summary["animated"]:
-                summary["animated"].append(block)
+                flipbooks.append(flipbook_entry(e["strip_path"], alias, e["frames"], e["tpf"], e["blend"], idx,
+                                                None if direct else 1 + pos))
+            for f in group_faces:
+                tex[f] = alias
+        entry["textures"] = tex if len(set(tex.values())) > 1 else next(iter(tex.values()))
+        entry.pop("isotropic", None)  # random texture rotation would scramble connected tiles
+        blocks_json[block] = entry
 
     # Bedrock texture paths of converted blocks (for the plain texture copies below)
     converted_paths = set()

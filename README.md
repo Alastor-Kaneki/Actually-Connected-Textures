@@ -61,18 +61,27 @@ game didn't keep the extra textures from the normal packs. Use the matching
 `*_direct.mcpack` from the fallback set instead. Those always hand the tiles to the
 mod, but glass shows a grid of tiles when the mod is off.
 
-`config/connected_textures.json` in the mod folder has three switches:
-`enabled`, `blocks` (full glass blocks) and `panes`.
+`config/connected_textures.json` in the mod folder has four switches:
+`enabled`, `blocks` (full glass blocks), `panes` and `overlays` (OptiFine overlay
+textures drawn on top of the base block).
 
 ### What's supported
 
 * Methods: `ctm` (47 tiles), `ctm_compact` (expanded to 47 at conversion),
   `horizontal`, `vertical`, `horizontal+vertical`, `vertical+horizontal`, `top`,
   `random` (weights, but not OptiFine's exact random pattern), `repeat`, `fixed`.
+* Overlay methods: `overlay` (17 tiles), `overlay_ctm`, `overlay_random`,
+  `overlay_repeat`, `overlay_fixed`. Overlays are drawn as extra quads on top of
+  the face's own texture, including `<skip>` (transparent) overlay tiles.
+  Several overlay rules on one block face are merged in pack order, and an
+  overlay can share a face with a normal CTM rule. Overlays only apply to
+  full-cube blocks, not to panes. Overlay animations use the first frame, and
+  `connectTiles`, `connectBlocks`, `tintIndex`, `tintBlock` and `layer` are ignored.
 * Rule keys: `matchBlocks`, `matchTiles` (by block name), `tiles`, `faces`,
   `innerSeams`, `weights`, `width`/`height`. `connect` is always `block`.
   Biome, height and block-state conditions are ignored.
-* Not supported: overlay methods.
+* Not supported: Fusion's `overlay` layout, and overlay rules in `direct` packs.
+  Only the first non-overlay rule applies to a block face.
 * Fusion (SuperMartijn642) connecting textures, from `pack.mcmeta` overrides folders, block
   models (`fusion:model`) and texture `.mcmeta` files: the `full`, `simple`, `compact`,
   `pieced`, `horizontal` and `vertical` layouts, plus Fusion's random, continuous and
