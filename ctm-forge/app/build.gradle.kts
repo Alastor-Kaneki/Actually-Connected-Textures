@@ -30,7 +30,7 @@ android {
         applicationId = "com.alastor.ctmforge"
         minSdk = 28
         targetSdk = 36
-        versionCode = 5
+        versionCode = 6
         versionName = "Overlay"
     }
 

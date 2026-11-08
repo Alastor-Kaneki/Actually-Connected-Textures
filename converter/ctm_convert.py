@@ -1471,7 +1471,8 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
             # overlay-only block (e.g. grass) still shows each face's own texture.
             base_key = next((e["base_path"] for e in entries if not e["layout"].overlay), None)
             if base_key is None:
-                paths = entry_paths(face_aliases(VANILLA_BLOCKS[block]).get(f))
+                raw = alias_entries(face_aliases(VANILLA_BLOCKS[block]).get(f))
+                paths = entry_paths(raw[0]) if raw else []
                 base_key = paths[0] if paths else ""
             key = (tuple(e["sheet_path"] for e in entries), base_key)
             groups.setdefault(key, []).append(f)
