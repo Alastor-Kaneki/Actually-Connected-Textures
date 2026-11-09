@@ -12,7 +12,7 @@ manifest = {
     "author": "Alastor",
     "description": "OptiFine-style connected textures (CTM) for glass and other blocks, with overlay support. "
                    "Needs a converted CTM resource pack. Built for Minecraft 1.26.60 and 1.26.62.",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "entry": "libConnectedTextures.so",
     "icon": "icon.png",
     "overwrite_files": ["icon.png"],

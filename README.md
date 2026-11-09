@@ -63,7 +63,9 @@ mod, but glass shows a grid of tiles when the mod is off.
 
 `config/connected_textures.json` in the mod folder has four switches:
 `enabled`, `blocks` (full glass blocks), `panes` and `overlays` (OptiFine overlay
-textures drawn on top of the base block).
+textures drawn on top of the base block). The same four toggles also appear as a
+**Connected Textures module in LeviLauncher's Mod Menu**, where you can change
+them in game; edits are written back to that JSON file.
 
 ### What's supported
 

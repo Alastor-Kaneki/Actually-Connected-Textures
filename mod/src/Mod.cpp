@@ -25,6 +25,7 @@
 
 #include "CtmLogic.hpp"
 #include "Game.hpp"
+#include "pl/ModMenu.hpp"
 #include "pl/memory/Hook.hpp"
 #include "pl/memory/Signature.hpp"
 
@@ -63,6 +64,7 @@ struct Config {
 };
 Config g_cfg;
 std::atomic<bool> g_enabled{false};
+std::atomic<bool> g_wantEnabled{false};
 bool g_hooked = false;
 uintptr_t g_addr[Sig_Count] = {};
 
@@ -514,6 +516,45 @@ void buildDetour(uintptr_t builder, uintptr_t geometry, uintptr_t transparentLea
     orig(builder, geometry, transparentLeaves, lighting, forExport, caps);
 }
 
+std::string g_modRoot;
+
+void saveConfig() {
+    if (g_modRoot.empty()) return;
+    const std::string path = g_modRoot + "/config/connected_textures.json";
+    if (FILE* f = std::fopen(path.c_str(), "wb")) {
+        std::fprintf(f, "{\n  \"enabled\": %s,\n  \"blocks\": %s,\n  \"panes\": %s,\n  \"overlays\": %s\n}\n",
+                     g_cfg.enabled ? "true" : "false", g_cfg.blocks ? "true" : "false",
+                     g_cfg.panes ? "true" : "false", g_cfg.overlays ? "true" : "false");
+        std::fclose(f);
+    }
+}
+
+void registerModMenu() {
+    // Registered synchronously from PLMod_Enable, so the preloader attributes the
+    // module to this mod (folder name "Connected Textures").
+    const bool ok = pl::modmenu::ModuleBuilder("connectedtextures.main", "Connected Textures")
+        .description("OptiFine-style connected textures and overlays for Bedrock.")
+        .defaultEnabled(g_cfg.enabled)
+        .onToggle([](std::string_view, bool on) {
+            g_cfg.enabled = on;
+            g_wantEnabled.store(on, std::memory_order_release);
+            g_enabled.store(g_hooked && on, std::memory_order_release);
+            saveConfig();
+        })
+        .onConfigChanged([](std::string_view, std::string_view key, std::string_view value) {
+            const bool on = value == "true" || value == "1";
+            if (key == "blocks") g_cfg.blocks = on;
+            else if (key == "panes") g_cfg.panes = on;
+            else if (key == "overlays") g_cfg.overlays = on;
+            saveConfig();
+        })
+        .config("blocks", "Full blocks", pl::modmenu::ConfigType::Toggle, g_cfg.blocks ? "true" : "false")
+        .config("panes", "Panes", pl::modmenu::ConfigType::Toggle, g_cfg.panes ? "true" : "false")
+        .config("overlays", "Overlays", pl::modmenu::ConfigType::Toggle, g_cfg.overlays ? "true" : "false")
+        .registerModule();
+    if (!ok) LOGW("Mod Menu registration failed");
+}
+
 // ------------------------------------------------------------------ setup
 void loadConfig(const char* root) {
     if (!root || !*root) return;
@@ -608,7 +649,6 @@ bool setup() {
 
 // The game library is usually loaded after mods ("preload-native"), so setup
 // waits for dlopen("libminecraftpe.so") the same way BedrockTools does.
-std::atomic<bool> g_wantEnabled{false};
 std::mutex g_setupMutex;
 bool g_setupDone = false;
 thread_local bool t_inSetup = false;
@@ -654,9 +694,12 @@ void* dlopenDetour(const char* filename, int flags) {
 
 CTM_EXPORT bool PLMod_Load(JavaVM*, const PLModInfo* info) {
     const char* root = info ? info->mod_root_path : nullptr;
-    if (root && *root) g_statusPath = std::string(root) + "/status.txt";
+    if (root && *root) {
+        g_modRoot = root;
+        g_statusPath = std::string(root) + "/status.txt";
+    }
     if (!gameProcess()) return true;
-    status("Connected Textures 1.1.0 for Minecraft 1.26.60 / 1.26.62", true);
+    status("Connected Textures 1.2.0 for Minecraft 1.26.60 / 1.26.62", true);
     loadConfig(root);
     LOGI("loading (blocks=%d panes=%d enabled=%d)", g_cfg.blocks, g_cfg.panes, g_cfg.enabled);
     trySetup();
@@ -677,6 +720,7 @@ CTM_EXPORT bool PLMod_Load(JavaVM*, const PLModInfo* info) {
 CTM_EXPORT bool PLMod_Enable() {
     g_wantEnabled.store(true, std::memory_order_release);
     g_enabled.store(g_hooked && g_cfg.enabled, std::memory_order_release);
+    registerModMenu();
     LOGI("enabled=%d", g_enabled.load() ? 1 : 0);
     return true;
 }
@@ -684,6 +728,7 @@ CTM_EXPORT bool PLMod_Enable() {
 CTM_EXPORT bool PLMod_Disable() {
     g_wantEnabled.store(false, std::memory_order_release);
     g_enabled.store(false, std::memory_order_release);
+    pl::modmenu::unregisterModule("connectedtextures.main");
     return true;
 }
 
