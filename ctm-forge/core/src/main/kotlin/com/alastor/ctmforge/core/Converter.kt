@@ -757,6 +757,11 @@ object Converter {
                     }
                 }
                 if ("carried_textures" !in entry) entry["carried_textures"] = vanilla["textures"] ?: JsonNull
+                if (faces.values.any { lst -> lst.any { it.layout.overlay } }) {
+                    // Overlay quads are cutout, not opaque: without alpha testing their
+                    // transparent pixels paint black over the base texture.
+                    entry["render_layer"] = JsonPrimitive("alpha_test")
+                }
                 for ((gi, group) in groups.entries.withIndex()) {
                     val (paths, baseKey) = group.key
                     val groupFaces = group.value

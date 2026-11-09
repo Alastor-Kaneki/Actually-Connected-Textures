@@ -1485,6 +1485,10 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
             continue
         if "carried_textures" not in entry:
             entry["carried_textures"] = json.loads(json.dumps(VANILLA_BLOCKS[block].get("textures")))
+        if any(e["layout"].overlay for entries in faces.values() for e in entries):
+            # Overlay quads are cutout, not opaque: without alpha testing their
+            # transparent pixels paint black over the base texture.
+            entry["render_layer"] = "alpha_test"
         for gi, (key, group_faces) in enumerate(groups.items()):
             entries = faces[group_faces[0]]
             alias = f"ctm_{slug}_{block}" + (f"_{index}" if index is not None else "") + (f"_{gi}" if gi else "")
