@@ -1,8 +1,9 @@
 # Conditional textures
 
-Requires CTM Forge build 11 and Connected Textures **1.3.1**. Existing converted
-packs keep their previous behavior. Reconvert Java packs to retain biome and
-connection conditions that older converters discarded.
+Requires CTM Forge build 12 and Connected Textures **1.3.1**. Reconvert packs made
+by older builds: build 12 embeds the normal fallback so Bedrock retains both
+texture variations when loading the pack. The installed mod does not need another
+update if it is already 1.3.1.
 
 ## Create a pack
 
@@ -32,7 +33,9 @@ or across a radius. Biome and touching conditions combine with AND. Each list us
 You may add several rules for the same block faces. The first matching conditional
 rule wins, in creator/file order, regardless of where the unfiltered fallback sits.
 If none matches, the first unfiltered rule wins. Without one, each face retains its
-own vanilla/base-pack texture. Different conditions can use different animations.
+own bundled vanilla texture, or the source Java pack's replacement when supplied.
+These fallback images belong to the converted pack; lower-priority resource packs
+cannot change them. Different conditions can use different animations.
 All existing animation frame/timing/size limits still apply.
 
 ## Imported Java properties
@@ -100,3 +103,26 @@ Both 32-frame timelines are retained, including fire_0's frame-16 start. Build 1
 also registers vanilla fire animations on each fallback alias, and expands the
 old `side` key before replacing faces. Test the converted pack with fire in the
 End and the Overworld: only the End should use the purple animation.
+
+## Build 12: purple fire outside the End
+
+The 26.60 atlas loader filters each variations list to the highest-priority pack
+containing an image. A list containing a vanilla fallback and a local purple sheet
+therefore loses the fallback. The flipbook loader clamps an out-of-range variant
+index to zero, so the purple animation then paints the only remaining slot.
+This happens before the mod evaluates the biome rule.
+
+Both converters now place each required fallback in a private `ctm/fallback/`
+path inside the output pack. Static source-pack overrides take precedence over
+bundled vanilla images. Animated fallbacks receive their own strip, original
+frame order and timing, and variation-zero flipbook. Neither `fire_0`/`fire_1`
+nor soul-fire image paths are globally replaced by a conditional-only pack.
+
+The loading behavior was inspected in the supplied 26.60 arm64 binary:
+`TextureAtlas::_addElementCollection` at `0xb73e250` queries
+`ResourcePackLoader::getPackStackIndexOfResource`, keeps the minimum stack index
+at `0xb73e3ec`, and removes other variants at `0xb73e534`.
+Flipbook registration at `0xb77ca70` bounds-checks `atlas_tile_variant` and
+falls back to zero. Tests assert all variations resolve within the output pack,
+the two fire layers keep separate slots, and the normal animation strips match
+the pinned vanilla source. In-game End/Overworld validation is still required.

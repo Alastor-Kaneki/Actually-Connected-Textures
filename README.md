@@ -111,6 +111,11 @@ connected block gets a texture alias whose terrain texture is a variations list,
 base texture wins. The sheet path encodes how to read it:
 `textures/blocks/ctm/<method>-<cols>x<rows>-<count>[-s]/<name>.png`.
 
+Both images must be included in the converted pack. Bedrock drops variations
+whose images come from lower-priority packs, so build 12 copies each needed
+normal fallback to a private path. Conditional and overlay-only rules prefer a
+normal texture supplied by the Java pack, otherwise the bundled vanilla image.
+
 Animated tiles make a square, animated sheet: a flipbook (`textures/flipbook_textures.json`)
 plays whole-sheet frames from `textures/blocks/ctm/<spec>/anim/<name>.png` into the sheet's
 atlas slot, so whichever tile the mod picks animates. Plain animated textures are written at
@@ -135,6 +140,18 @@ Signatures for the shared functions are copied verbatim from BedrockTools 1.5.9
 the right address even when BedrockTools has already hooked a function.
 
 ### Build
+
+Prepare the offline fallback images before running the converters, tests or app
+build. CI does this automatically. Use Mojang/bedrock-samples **v1.26.60.5**
+(commit `15701fa9c13923f12662984c32c124327e40e3d3`):
+
+```
+python3 -m pip install "Pillow>=10,<13"
+python3 tools/build_vanilla_fallbacks.py /path/to/bedrock-samples/resource_pack
+```
+
+This creates a roughly 1 MB archive for Python and the Android app. The app
+converts offline; generated archives and source images are not checked into git.
 
 ```
 cd mod

@@ -19,3 +19,6 @@ keystore.properties
 # resource packs (Java originals and converted .mcpack files) belong to their authors
 packs/
 *.mcpack
+
+# Generated from the pinned Mojang samples during builds.
+vanilla_fallbacks.zip

@@ -37,10 +37,25 @@ jobs:
       - name: Python syntax
         run: python3 -m compileall -q converter tools mod/package.py
 
+      - name: Get vanilla fallback source
+        uses: actions/checkout@v7
+        with:
+          repository: Mojang/bedrock-samples
+          ref: 15701fa9c13923f12662984c32c124327e40e3d3 # v1.26.60.5
+          sparse-checkout: resource_pack/textures/blocks
+          path: .deps/bedrock-samples
+
       - name: Python converter tests
         run: |
           python3 -m pip install "Pillow>=10,<13"
+          python3 tools/build_vanilla_fallbacks.py .deps/bedrock-samples/resource_pack
           python3 -m unittest discover -s converter -p 'test_*.py'
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: CTM-converter-fallbacks
+          path: ctm-forge/core/src/main/resources/vanilla_fallbacks.zip
+          if-no-files-found: error
 
       - name: Get preloader-android headers
         uses: actions/checkout@v7
@@ -85,6 +100,12 @@ jobs:
           java-version: "21"
 
       - uses: gradle/actions/setup-gradle@v6
+
+      - name: Bundle offline vanilla fallbacks
+        uses: actions/download-artifact@v7
+        with:
+          name: CTM-converter-fallbacks
+          path: ctm-forge/core/src/main/resources
 
       - name: Bundle the mod built above
         uses: actions/download-artifact@v7

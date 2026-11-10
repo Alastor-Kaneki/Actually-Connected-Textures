@@ -28,6 +28,14 @@ SOFTWARE.
 
 The OptiFine CTM tile layout and method rules follow the published OptiFine/MCPatcher format, and the Fusion texture layouts follow the format documented for SuperMartijn642's Fusion mod. converter/data/vanilla_26.60.json is extracted from Mojang/bedrock-samples v1.26.60.5 (blocks.json, terrain_texture.json aliases and flipbook_textures.json). converter/data/java_26.3.json pairs Java Edition 26.3 block and texture names (read from its blockstates and models) with those Bedrock names; it holds names only, no game assets.
 
+Build 12 also bundles terrain fallback images generated from Mojang/bedrock-samples
+v1.26.60.5, commit `15701fa9c13923f12662984c32c124327e40e3d3`. Only images needed by a
+converted pack are included in that pack, at private paths. Mojang's repository
+notice is: `(c) Mojang AB. All rights reserved.` These files are subject to the
+[Minecraft End User License Agreement](https://www.minecraft.net/en-us/eula).
+The source and its notice are available at
+https://github.com/Mojang/bedrock-samples/blob/15701fa9c13923f12662984c32c124327e40e3d3/LICENSE.md.
+
 CTM Forge uses the Shizuku API (https://github.com/RikkaApps/Shizuku-API, `dev.rikka.shizuku:api` and `dev.rikka.shizuku:provider`) to install its own updates through Shizuku:
 
 ```

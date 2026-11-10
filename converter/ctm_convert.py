@@ -1571,13 +1571,13 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
                     files[normal["base_path"] + ".png"] = png(normal["base_img"].resize(normal["tile0"].size, Image.NEAREST))
                     base_value = normal["base_path"]
                 else:
-                    # Overlay-only: each face's own vanilla texture, so the block
-                    # looks vanilla without the mod. A custom base texture in the
-                    # pack still reaches it through the plain texture copies below.
-                    base_value = key[1]
-                    if not base_value:
+                    # Bedrock removes variations from lower-priority packs. A vanilla
+                    # path alone disappears beside our local sheet, so copy its pixels
+                    # into this pack after plain source-pack overrides are available.
+                    if not key[1]:
                         log.append(f"skip: '{block}' has no vanilla base texture")
                         continue
+                    base_value = f"textures/blocks/ctm/fallback/{slug}/{key[1].removeprefix('textures/')}"
                 value = {"variations": [{"path": base_value, "weight": 1000000}] +
                                        [{"path": p, "weight": 0.05} for p in key[0]]}
             vanilla_alias = face_aliases(VANILLA_BLOCKS[block]).get(min(group_faces))
@@ -1595,7 +1595,8 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
             else:
                 terrain[alias] = {"textures": value}
             if not direct and normal is None and vanilla_alias:
-                base_animation_aliases.append((vanilla_alias, index or 0, alias, index if array else None))
+                base_animation_aliases.append((vanilla_alias, index or 0, alias, index if array else None,
+                                               key[1], base_value))
             for pos, e in enumerate(entries):
                 if not e["animated"]:
                     continue
@@ -1683,20 +1684,44 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
         "resource_pack_name": slug, "texture_name": "atlas.terrain", "padding": 8, "num_mip_levels": 4,
         "texture_data": terrain}, indent=1).encode()
     files["blocks.json"] = json.dumps(blocks_json, indent=1).encode()
-    # Each new terrain alias owns its own atlas slot. Vanilla's flipbook still
-    # targets the old alias, so mirror it onto variation zero of the new one.
-    # Prefer a converted plain animation when the pack supplies a custom base.
+    # Keep every fallback in the same pack as its sheet: otherwise Bedrock's
+    # pack-stack filtering drops it and animation variant 1 clamps to slot 0.
+    # Private paths avoid overriding normal/soul fire and other unrelated blocks.
     base_flips = []
-    for old_alias, old_index, new_alias, new_index in base_animation_aliases:
+    vanilla_images = None
+
+    def fallback_image(path):
+        nonlocal vanilla_images
+        if path + ".png" in files:
+            return files[path + ".png"]
+        archive = HERE / "data" / "vanilla_fallbacks.zip"
+        if vanilla_images is None:
+            if not archive.is_file():
+                raise ValueError("Vanilla fallbacks missing: run tools/build_vanilla_fallbacks.py <bedrock-samples/resource_pack>")
+            with zipfile.ZipFile(archive) as z:
+                vanilla_images = {p: z.read(p) for p in z.namelist()}
+        if path + ".png" not in vanilla_images:
+            raise ValueError(f"No bundled normal texture for {path}; supply it in the source pack")
+        return vanilla_images[path + ".png"]
+
+    for old_alias, old_index, new_alias, new_index, old_path, new_path in base_animation_aliases:
         source = next((f for f in flipbooks if f["atlas_tile"] == old_alias and f.get("atlas_index", 0) == old_index), None)
-        source = source or VANILLA_FLIPBOOKS.get((old_alias, old_index))
+        # A supplied static base intentionally replaces the vanilla animation.
+        if source is None and old_path + ".png" not in files:
+            source = VANILLA_FLIPBOOKS.get((old_alias, old_index))
+        base_image = load_image(fallback_image(old_path))
         if source:
-            f = dict(source, atlas_tile=new_alias, atlas_tile_variant=0)
+            strip_path = new_path + "_animation"
+            files[strip_path + ".png"] = fallback_image(source["flipbook_texture"])
+            if base_image.height > base_image.width:
+                base_image = base_image.crop((0, 0, base_image.width, base_image.width))
+            f = dict(source, flipbook_texture=strip_path, atlas_tile=new_alias, atlas_tile_variant=0)
             f.pop("atlas_index", None)
             if new_index is not None:
                 f["atlas_index"] = new_index
             if f not in base_flips:
                 base_flips.append(f)
+        files[new_path + ".png"] = png(base_image)
     flipbooks = base_flips + flipbooks
     if flipbooks:
         files["textures/flipbook_textures.json"] = json.dumps(flipbooks, indent=1).encode()
@@ -1710,6 +1735,7 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
                             f"LeviLauncher mod." + (f" Original: {desc}" if desc else "")),
             "uuid": str(uuid.uuid5(ns, "header")), "version": [1, 0, 0], "min_engine_version": [1, 21, 120]},
         "modules": [{"type": "resources", "uuid": str(uuid.uuid5(ns, "resources")), "version": [1, 0, 0]}],
+        "metadata": {"product_type": "addon"},
     }, indent=1).encode()
     icon = pack.get("pack.png")
     if icon:
