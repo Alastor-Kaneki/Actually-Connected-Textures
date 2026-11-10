@@ -1,5 +1,6 @@
 package com.alastor.ctmforge
 
+import android.net.Uri
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -47,6 +48,38 @@ class CreatorUiTest {
         assertTrue(entry.mcpack.isFile)
         assertEquals("Null glass", entry.name)
         compose.onRoot().captureRoboImage("build/screens/creator-export.png")
+    }
+
+    @Test fun importsSeparateFramesInNaturalOrderAndKeepsLatestEdits() {
+        compose.waitUntil(10000) { !vm.creator.busy }
+        compose.runOnUiThread { vm.creator.create() }
+        compose.waitUntil(10000) { vm.creator.project != null && !vm.creator.busy }
+        val p = vm.creator.project!!
+        val dir = File(compose.activity.cacheDir, "creator-import").apply { mkdirs() }
+        val first = File(dir, "frame2.png").apply { writeBytes(Png.encode(Img(16, 16, IntArray(256) { 0xff220000.toInt() }))) }
+        val second = File(dir, "frame10.png").apply { writeBytes(Png.encode(Img(16, 16, IntArray(256) { 0xffaa0000.toInt() }))) }
+        compose.runOnUiThread {
+            vm.creator.importImages(listOf(Uri.fromFile(second), Uri.fromFile(first)), p.rules.first().id, 0, "frames")
+        }
+        compose.waitUntil(10000) { !vm.creator.busy }
+        assertNull(vm.creator.error)
+        val tile = vm.creator.project!!.rules.first().tiles.first()!!
+        assertEquals(2, tile.frames)
+        val image = Png.decode(vm.creator.store.asset(p.id, tile.asset).readBytes())
+        assertEquals(0xff220000.toInt(), image[0, 0])
+        assertEquals(0xffaa0000.toInt(), image[0, 16])
+        compose.runOnUiThread {
+            repeat(20) { vm.creator.edit(vm.creator.project!!.copy(name = "Draft $it")) }
+            vm.creator.editRule(p.rules.first().id) { it.copy(animated = true, order = "1,0", ticks = "3") }
+        }
+        compose.waitUntil(10000) { vm.creator.pendingSaves == 0 }
+        val saved = CreatorStore(compose.activity).read(p.id)
+        assertEquals("Draft 19", saved.name)
+        assertTrue(saved.rules.first().animated)
+        compose.runOnUiThread { vm.creator.close(); vm.creator.open(saved); vm.creator.build() }
+        compose.waitUntil(20000) { !vm.creator.busy }
+        assertNull(vm.creator.error)
+        assertTrue(vm.library.entries.first { it.slug == "created_${p.id}" }.animated.contains("glass"))
     }
 
     @Test fun animatedDraftRoundTripsAllSettings() {

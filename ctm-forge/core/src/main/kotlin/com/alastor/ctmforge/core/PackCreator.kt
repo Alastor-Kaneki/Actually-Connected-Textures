@@ -56,7 +56,22 @@ object PackCreator {
         val h = ByteBuffer.wrap(bytes, 20, 4).int
         require(w in 8..256 && w and (w - 1) == 0) { "Texture width must be 8, 16, 32, 64, 128 or 256 pixels." }
         require(h >= w && h % w == 0 && h / w <= 64) { "Use a square PNG or a vertical strip of up to 64 square frames." }
-        return Png.decode(bytes).also { require(it.width == w && it.height == h) }
+        var pos = 8
+        var headers = 0
+        while (pos + 12 <= bytes.size) {
+            val length = ByteBuffer.wrap(bytes, pos, 4).int
+            require(length >= 0 && pos.toLong() + 12 + length <= bytes.size) { "Invalid PNG chunk." }
+            val type = String(bytes, pos + 4, 4, Charsets.US_ASCII)
+            if (type == "IHDR") {
+                headers++
+                require(pos == 8 && length == 13 && headers == 1) { "Invalid PNG header." }
+            }
+            if (type == "IEND") break
+            pos += 12 + length
+        }
+        require(headers == 1) { "Missing PNG header." }
+        // RGBA16 plus row/filter overhead, including Adam7 passes.
+        return Png.decode(bytes, w * h * 8 + h * 8 + 1024).also { require(it.width == w && it.height == h) }
     }
 
     fun sequence(rule: CreatorRule, count: Int): List<Int> {
@@ -89,6 +104,7 @@ object PackCreator {
         }.toString().toByteArray()
         val occupied = mutableSetOf<Pair<String, String>>()
         var pixels = 0L
+        var outputPixels = 0L
         project.rules.forEachIndexed { ri, rule ->
             val prefix = "Rule ${ri + 1} (${rule.block})"
             try {
@@ -124,6 +140,11 @@ object PackCreator {
                     val columns = kotlin.math.ceil(kotlin.math.sqrt(outputTiles.toDouble())).toInt()
                     require(columns * images.first().width * order.distinct().size <= Anim.MAX_STRIP_HEIGHT) { "Animated sheet is too tall. Use smaller tiles or fewer frames." }
                 }
+                val outputTiles = if (rule.method == CreatorMethod.COMPACT) 47 else rule.tiles.size
+                val animatedColumns = kotlin.math.ceil(kotlin.math.sqrt(outputTiles.toDouble())).toInt()
+                outputPixels += images.first().width.toLong() * images.first().width *
+                    (if (rule.animated) animatedColumns * animatedColumns * order.distinct().size else outputTiles + 7)
+                require(outputPixels <= MAX_PROJECT_PIXELS) { "Generated atlases exceed 16 million pixels. Use smaller tiles or fewer animation frames." }
                 val dir = "assets/minecraft/optifine/ctm/creator/r${ri.toString().padStart(2, '0')}"
                 images.forEachIndexed { ti, im ->
                     val path = "$dir/$ti.png"

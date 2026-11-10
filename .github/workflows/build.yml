@@ -123,6 +123,14 @@ jobs:
           path: ctm-forge/dist/*.apk
           if-no-files-found: error
 
+      - name: Upload UI previews
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: CTM-Forge-ui-previews
+          path: ctm-forge/app/build/screens/*.png
+          if-no-files-found: ignore
+
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v7

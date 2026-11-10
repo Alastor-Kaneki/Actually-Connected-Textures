@@ -18,7 +18,7 @@ class PackCreatorTest {
         for (m in CreatorMethod.entries) {
             val result = build(rule(m))
             assertEquals(setOf("glass"), result.blocks.keys)
-            assertEquals(m.tileCount, if (m == CreatorMethod.COMPACT) 5 else Ctm.parseSpec("textures/blocks/ctm/${result.blocks.getValue("glass")}/x")!!.count)
+            assertEquals(if (m == CreatorMethod.COMPACT) 47 else m.tileCount, Ctm.parseSpec("textures/blocks/ctm/${result.blocks.getValue("glass")}/x")!!.count)
             assertTrue(result.files.containsKey("blocks.json"))
             assertFalse(result.files.containsKey("textures/flipbook_textures.json"))
             assertEquals(result.files.keys, JavaPack.readZip(result.mcpackBytes().inputStream()).keys)
@@ -56,6 +56,12 @@ class PackCreatorTest {
         assertFailsWith<IllegalArgumentException> { build(rule().copy(animated = true)) }
         assertFailsWith<IllegalArgumentException> { PackCreator.decodeTexture(Png.encode(Img(16, 17))) }
         assertFailsWith<IllegalArgumentException> { build(rule(CreatorMethod.CTM, 64), strip(64, 256)) }
+    }
+    @Test fun pngInflationLimitIsEnforced() {
+        assertFailsWith<Png.PngException> { Png.decode(strip(4), maxInflatedBytes = 10) }
+        val valid = strip(1)
+        val duplicatedHeader = valid.take(33).toByteArray() + valid.drop(8).toByteArray()
+        assertFailsWith<IllegalArgumentException> { PackCreator.decodeTexture(duplicatedHeader) }
     }
     @Test fun overlappingRulesAreRejectedButDifferentFacesWork() {
         val r = rule()

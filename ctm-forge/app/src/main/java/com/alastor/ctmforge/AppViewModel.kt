@@ -56,7 +56,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     enum class Tab { BROWSE, CREATE, LIBRARY, SETTINGS }
 
-    val creator = CreatorController(app, viewModelScope) { push(Route.Pack(it)) }
+    val creator = CreatorController(this.app, viewModelScope) { push(Route.Pack(it)) }
 
     sealed interface Route {
         data class Project(val hit: Modrinth.Hit) : Route

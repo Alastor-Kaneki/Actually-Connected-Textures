@@ -17,7 +17,7 @@ object Png {
 
     fun isPng(bytes: ByteArray): Boolean = bytes.size >= 8 && (0 until 8).all { bytes[it] == SIGNATURE[it] }
 
-    fun decode(bytes: ByteArray): Img {
+    fun decode(bytes: ByteArray, maxInflatedBytes: Int = 512 * 1024 * 1024): Img {
         if (!isPng(bytes)) throw PngException("not a PNG file")
         var pos = 8
         var width = 0; var height = 0; var depth = 0; var colorType = 0; var interlace = 0
@@ -51,7 +51,7 @@ object Png {
         if (width <= 0 || height <= 0 || width > 16384 || height > 16384) throw PngException("bad size ${width}x$height")
         val channels = when (colorType) { 0 -> 1; 2 -> 3; 3 -> 1; 4 -> 2; 6 -> 4; else -> throw PngException("colour type $colorType") }
         if (depth !in intArrayOf(1, 2, 4, 8, 16)) throw PngException("bit depth $depth")
-        val raw = inflate(idat.toByteArray())
+        val raw = inflate(idat.toByteArray(), maxInflatedBytes)
         val bitsPerPixel = channels * depth
         val bpp = maxOf(1, bitsPerPixel / 8)
         val img = Img(width, height)
@@ -84,7 +84,7 @@ object Png {
         intArrayOf(0, 2, 2, 4), intArrayOf(1, 0, 2, 2), intArrayOf(0, 1, 1, 2),
     )
 
-    private fun inflate(data: ByteArray): ByteArray {
+    private fun inflate(data: ByteArray, limit: Int): ByteArray {
         val inf = Inflater()
         inf.setInput(data)
         val out = ByteArrayOutputStream(maxOf(64, data.size * 4))
@@ -96,7 +96,7 @@ object Png {
                     if (inf.needsInput() || inf.needsDictionary()) break
                 }
                 out.write(buf, 0, n)
-                if (out.size() > 512 * 1024 * 1024) throw PngException("image too large")
+                if (out.size() > limit) throw PngException("image too large")
             }
         } finally {
             inf.end()

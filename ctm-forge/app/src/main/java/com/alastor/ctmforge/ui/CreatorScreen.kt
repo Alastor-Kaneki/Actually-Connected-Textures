@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -30,6 +31,8 @@ import kotlinx.coroutines.delay
 @Composable
 fun CreatorScreen(c: CreatorController, padding: PaddingValues) {
     val p = c.project
+    val listState = rememberLazyListState()
+    LaunchedEffect(c.error, p?.id) { if (c.error != null || p != null) listState.scrollToItem(0) }
     var delete by remember { mutableStateOf<CreatorProject?>(null) }
     // Persist the destination across activity recreation while Android's picker is open.
     var pickRule by rememberSaveable { mutableStateOf("") }
@@ -54,6 +57,7 @@ fun CreatorScreen(c: CreatorController, padding: PaddingValues) {
         dismissButton = { TextButton(onClick = { delete = null }) { Text("Cancel") } },
     )
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize().padding(padding).imePadding(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -85,7 +89,7 @@ fun CreatorScreen(c: CreatorController, padding: PaddingValues) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = c::close, enabled = !c.busy) { Text("All drafts") }
-                    Text(if (c.pendingSaves > 0) "Saving…" else "Draft saved", style = MaterialTheme.typography.labelMedium)
+                    Text(if (c.error?.startsWith("Couldn't save draft") == true) "Unsaved changes" else if (c.pendingSaves > 0) "Saving…" else "Draft saved", style = MaterialTheme.typography.labelMedium)
                 }
             }
             item {
