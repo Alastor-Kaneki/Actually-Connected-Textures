@@ -8,7 +8,7 @@ import java.io.File
 
 /** Editable projects and owned copies of their textures; no document-provider grants needed. */
 class CreatorStore(context: Context) {
-    private val root = File(context.filesDir, "creator")
+    private val root = File(context.applicationContext.filesDir, "creator")
     private fun dir(id: String): File {
         require(Regex("[a-zA-Z0-9-]{1,64}").matches(id))
         return File(root, id)

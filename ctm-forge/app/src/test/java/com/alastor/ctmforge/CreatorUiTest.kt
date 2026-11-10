@@ -36,7 +36,9 @@ class CreatorUiTest {
         vm.creator.store.asset(p.id, texture.asset).writeBytes(Png.encode(Img(16, 16, IntArray(256) { 0xff7700aa.toInt() })))
         compose.runOnUiThread { vm.creator.editRule(p.rules.first().id) { it.copy(tiles = listOf(texture)) } }
         compose.waitUntil(10000) { vm.creator.pendingSaves == 0 }
-        val restored = CreatorStore(compose.activity).read(p.id)
+        val reopenedStore = CreatorStore(compose.activity)
+        assertEquals(vm.creator.store.asset(p.id, "test.png"), reopenedStore.asset(p.id, "test.png"))
+        val restored = reopenedStore.read(p.id)
         assertEquals(vm.creator.project, restored)
         File("build/screens").mkdirs()
         compose.onRoot().captureRoboImage("build/screens/creator-editor.png")
