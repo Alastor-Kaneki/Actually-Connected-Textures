@@ -33,7 +33,12 @@ class ConditionsTest {
         val result = build(rule.copy(block = "grass_block", biomes = "desert"))
         val bases = variations(result).map { it[0].jsonObject.getValue("path").jsonPrimitive.content }.toSet()
         assertTrue(bases.size > 1, "grass sides, top and bottom must retain their own base")
-        assertFalse(bases.any { "/ctm/" in it })
+        assertTrue(bases.all { "/fallback/" in it && "$it.png" in result.files })
+        // Bedrock prunes variations from lower-priority packs. Every variant must
+        // resolve in this pack, so the fallback survives beside the rule sheet.
+        assertTrue(variations(result).flatten().all {
+            it.jsonObject.getValue("path").jsonPrimitive.content + ".png" in result.files
+        })
     }
 
     @Test fun animatedSheetsAndFlipbookStripsCarryTheSameConditions() {
@@ -80,10 +85,14 @@ class ConditionsTest {
         for ((face, layer) in listOf("up" to 0, "down" to 1)) {
             val alias = faces.getValue(face).jsonPrimitive.content
             val variants = terrain.getValue(alias).jsonObject.getValue("textures").jsonObject.getValue("variations").jsonArray
-            assertEquals("textures/blocks/fire_$layer", variants[0].jsonObject.getValue("path").jsonPrimitive.content)
+            val fallback = "textures/blocks/ctm/fallback/end_fire/blocks/fire_$layer"
+            assertEquals(fallback, variants[0].jsonObject.getValue("path").jsonPrimitive.content)
+            assertTrue(variants.all { it.jsonObject.getValue("path").jsonPrimitive.content + ".png" in result.files })
             assertTrue("the_end/end/" in variants[1].jsonObject.getValue("path").jsonPrimitive.content)
             val base = flips.single { it["atlas_tile"]?.jsonPrimitive?.content == alias && it["atlas_tile_variant"]?.jsonPrimitive?.int == 0 }
-            assertEquals("textures/blocks/fire_$layer", base.getValue("flipbook_texture").jsonPrimitive.content)
+            assertEquals(fallback + "_animation", base.getValue("flipbook_texture").jsonPrimitive.content)
+            assertEquals(if (layer == 0) 16 else 0, base.getValue("frames").jsonArray.first().jsonPrimitive.int)
+            assertContentEquals(VanillaImages.png("textures/blocks/fire_$layer"), result.files.getValue(fallback + "_animation.png"))
             val sheet = flips.single { it["atlas_tile"]?.jsonPrimitive?.content == alias && it["atlas_tile_variant"]?.jsonPrimitive?.int == 1 }
             val image = Png.decode(result.files.getValue(sheet.getValue("flipbook_texture").jsonPrimitive.content + ".png"))
             assertEquals(16, image.width)
@@ -91,6 +100,22 @@ class ConditionsTest {
             assertEquals(if (layer == 0) 16 else 0, (image[0, 0] ushr 16) and 255)
             assertEquals((0..31).toList(), sheet.getValue("frames").jsonArray.map { it.jsonPrimitive.int })
         }
+        assertFalse("soul_fire" in json("blocks.json").jsonObject)
+        assertFalse(result.files.keys.any { it.startsWith("textures/blocks/fire_") || "soul_fire" in it })
+    }
+
+    @Test fun suppliedStaticBaseIsCopiedWithoutVanillaAnimation() {
+        val dir = "assets/minecraft/optifine/ctm/end"
+        val normal = Png.encode(Img(16, 16, IntArray(256) { 0xffff7800.toInt() }))
+        val pack = JavaPack.fromEntries(mapOf(
+            "$dir/0.png" to png,
+            "$dir/a.properties" to "matchTiles=fire_0\nmethod=fixed\ntiles=0\nbiomes=the_end".toByteArray(),
+            "assets/minecraft/textures/block/fire_0.png" to normal,
+        ))
+        val result = Converter.convert(pack, ConvertOptions())
+        val base = variations(result).single()[0].jsonObject.getValue("path").jsonPrimitive.content
+        assertEquals(0xffff7800.toInt(), Png.decode(result.files.getValue("$base.png"))[0, 0])
+        assertFalse("textures/flipbook_textures.json" in result.files)
     }
 
     @Test fun validatesNamesAndCanonicalizesBlockAndBiomeAliases() {

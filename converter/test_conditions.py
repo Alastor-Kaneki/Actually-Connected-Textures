@@ -42,7 +42,12 @@ class ConditionalPacks(unittest.TestCase):
         _, files = self.convert(["biomes=desert"], block="grass_block")
         bases = {v[0]["path"] for v in self.variants(files)}
         self.assertGreater(len(bases), 1)
-        self.assertTrue(all("/ctm/" not in p for p in bases))
+        self.assertTrue(all("/fallback/" in p and p + ".png" in files for p in bases))
+        for variations in self.variants(files):
+            # Bedrock keeps only variations from the highest-priority resource pack.
+            # The old [vanilla path, local sheet] format lost variation zero here.
+            priorities = [0 if v["path"] + ".png" in files else 1 for v in variations]
+            self.assertEqual([0] * len(variations), priorities)
 
     def test_animation_preserves_conditions(self):
         _, files = self.convert(["biomes=!desert\nctmforge.neighborBlocks=sand"], animated=True)
@@ -82,15 +87,40 @@ class ConditionalPacks(unittest.TestCase):
             for face, layer, first in [("up", 0, 16), ("down", 1, 0)]:
                 alias = faces[face]
                 variations = terrain[alias]["textures"]["variations"]
-                self.assertEqual(f"textures/blocks/fire_{layer}", variations[0]["path"])
+                fallback = f"textures/blocks/ctm/fallback/end_fire/blocks/fire_{layer}"
+                self.assertEqual(fallback, variations[0]["path"])
+                self.assertTrue(all(v["path"] + ".png" in files for v in variations))
                 self.assertIn("the_end/end/", variations[1]["path"])
                 base = next(f for f in flips if f["atlas_tile"] == alias and f["atlas_tile_variant"] == 0)
-                self.assertEqual(f"textures/blocks/fire_{layer}", base["flipbook_texture"])
+                self.assertEqual(fallback + "_animation", base["flipbook_texture"])
+                self.assertEqual(first, base["frames"][0])
+                self.assertIn(base["flipbook_texture"] + ".png", files)
+                with zipfile.ZipFile(ctm.HERE / "data/vanilla_fallbacks.zip") as vanilla:
+                    self.assertEqual(vanilla.read(f"textures/blocks/fire_{layer}.png"), files[base["flipbook_texture"] + ".png"])
                 sheet = next(f for f in flips if f["atlas_tile"] == alias and f["atlas_tile_variant"] == 1)
                 strip = Image.open(io.BytesIO(files[sheet["flipbook_texture"] + ".png"]))
                 self.assertEqual((16, 512), strip.size)
                 self.assertEqual(first, strip.getpixel((0, 0))[0])
                 self.assertEqual(list(range(32)), sheet["frames"])
+            self.assertNotIn("soul_fire", json.loads(files["blocks.json"]))
+            self.assertFalse(any(p.startswith("textures/blocks/fire_") or "soul_fire" in p for p in files))
+
+    def test_supplied_static_base_is_copied_without_vanilla_animation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            d = root / "src/assets/minecraft/optifine/ctm/end"
+            d.mkdir(parents=True)
+            Image.new("RGBA", (16, 16), (100, 0, 200, 255)).save(d / "0.png")
+            (d / "a.properties").write_text("matchTiles=fire_0\nmethod=fixed\ntiles=0\nbiomes=the_end")
+            b = root / "src/assets/minecraft/textures/block"
+            b.mkdir(parents=True)
+            Image.new("RGBA", (16, 16), (255, 120, 0, 255)).save(b / "fire_0.png")
+            ctm.convert(root / "src", root / "out.mcpack", "Custom", "custom")
+            with zipfile.ZipFile(root / "out.mcpack") as z:
+                files = {p: z.read(p) for p in z.namelist()}
+            base = self.variants(files)[0][0]["path"]
+            self.assertEqual((255, 120, 0, 255), Image.open(io.BytesIO(files[base + ".png"])).getpixel((0, 0)))
+            self.assertNotIn("textures/flipbook_textures.json", files)
 
     def test_names_and_rejection(self):
         self.assertEqual(["sea_lantern", "sealantern"], ctm.rule_conditions(connect_blocks="sea_lantern").connect_blocks)

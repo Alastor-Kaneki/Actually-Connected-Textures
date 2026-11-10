@@ -3,8 +3,8 @@
 
 Reads textures/flipbook_textures.json from Mojang/bedrock-samples' resource_pack and keeps, for
 every animated atlas tile, the fields the converter copies when a Java pack re-animates that
-tile: the flipbook image path and atlas_index / atlas_tile_variant / replicate. Timings are left
-out (they come from the Java pack's .mcmeta). Only names and numbers are written, no game assets.
+tile, including timing for conditional rules' normal fallback animations. Plain Java animation
+overrides still use timing from their .mcmeta. Only names and numbers are written, no game assets.
 
 Usage: build_vanilla_flipbooks.py <bedrock-samples resource_pack folder> <vanilla_26.60.json>
 """
@@ -13,7 +13,8 @@ import re
 import sys
 from pathlib import Path
 
-KEEP = ("atlas_tile", "atlas_index", "atlas_tile_variant", "flipbook_texture", "replicate")
+KEEP = ("atlas_tile", "atlas_index", "atlas_tile_variant", "flipbook_texture", "replicate",
+        "frames", "ticks_per_frame", "blend_frames")
 
 
 def main() -> None:

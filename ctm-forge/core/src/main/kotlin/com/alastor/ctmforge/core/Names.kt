@@ -12,7 +12,7 @@ object Vanilla {
     private val root: JsonObject by lazy { resource("/vanilla_26.60.json") }
     val blocks: JsonObject get() = root["blocks"] as JsonObject
     val terrainTextures: JsonObject get() = root["terrain_textures"] as JsonObject
-    /** flipbook_textures.json entries without their timing (tools/build_vanilla_flipbooks.py). */
+    /** Vanilla flipbook entries including timing for normal fallback animations. */
     val flipbooks: List<JsonObject> get() = (root["flipbooks"] as? JsonArray)?.filterIsInstance<JsonObject>() ?: emptyList()
     val source: String get() = (root["source"] as? JsonPrimitive)?.content ?: ""
 

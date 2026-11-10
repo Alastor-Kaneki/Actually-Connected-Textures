@@ -15,6 +15,13 @@ dependencies {
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     testImplementation(kotlin("test"))
 }
+tasks.named("processResources") {
+    doFirst {
+        check(file("src/main/resources/vanilla_fallbacks.zip").isFile) {
+            "Run python3 tools/build_vanilla_fallbacks.py <bedrock-samples/resource_pack> from the repository root before building"
+        }
+    }
+}
 tasks.test {
     useJUnitPlatform()
     maxHeapSize = "2g"

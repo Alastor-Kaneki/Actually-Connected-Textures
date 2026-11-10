@@ -647,7 +647,8 @@ object Converter {
             blocksJson["format_version"] = JsonPrimitive("1.21.120")
             val entries = HashMap<String, LinkedHashMap<String, JsonElement>>()
             val flipbooks = ArrayList<JsonElement>()
-            data class BaseAnimation(val oldAlias: String, val oldIndex: Int, val alias: String, val index: Int?)
+            data class BaseAnimation(val oldAlias: String, val oldIndex: Int, val alias: String, val index: Int?,
+                                     val oldPath: String, val path: String)
             val baseAnimations = ArrayList<BaseAnimation>()
             val arrayAliases = HashMap<Pair<String, String?>, String>()
             val ruleCount = HashMap<String, Int>()
@@ -792,10 +793,10 @@ object Converter {
                             files["${normal.basePath}.png"] = png(normal.baseImg.resizeNearest(normal.tile0.width, normal.tile0.height))
                             normal.basePath
                         } else {
-                            // Overlay-only: each face's own vanilla texture, so the block
-                            // looks vanilla without the mod. A custom base texture in the
-                            // pack still reaches it through the plain texture copies below.
-                            baseKey
+                            // Vanilla paths alone are pruned by Bedrock's pack-stack
+                            // filtering. Copy the fallback after plain overrides below.
+                            if (baseKey.isEmpty()) "" else
+                                "textures/blocks/ctm/fallback/$slug/${baseKey.removePrefix("textures/")}"
                         }
                         if (baseValue.isEmpty()) {
                             log += "skip: '$block' has no vanilla base texture"
@@ -823,7 +824,8 @@ object Converter {
                         terrain[alias] = JsonObject(mapOf("textures" to value))
                     }
                     if (!opt.direct && normal == null && vanillaAlias != null)
-                        baseAnimations += BaseAnimation(vanillaAlias, index ?: 0, alias, if (array) index else null)
+                        baseAnimations += BaseAnimation(vanillaAlias, index ?: 0, alias, if (array) index else null,
+                            baseKey, "textures/blocks/ctm/fallback/$slug/${baseKey.removePrefix("textures/")}")
                     for ((pos, e) in entries2.withIndex()) {
                         sheets += BlockSheet(block, e.spec, e.sheetPath, FACE_NAMES.filter { it in groupFaces })
                         if (!e.animated) continue
@@ -920,14 +922,24 @@ object Converter {
                 "padding" to JsonPrimitive(8), "num_mip_levels" to JsonPrimitive(4), "texture_data" to JsonObject(terrain),
             )))
             files["blocks.json"] = pretty(JsonObject(blocksJson))
-            // New aliases need a base-variation flipbook too. Prefer a plain base
-            // animation supplied by this pack over the vanilla animation entry.
+            // Both variations must live in this pack, or Bedrock removes the lower
+            // priority fallback and clamps the sheet's animation onto slot zero.
+            fun fallbackImage(path: String) = files["$path.png"] ?: VanillaImages.png(path)
             val baseFlips = baseAnimations.mapNotNull { base ->
                 val source = flipbooks.filterIsInstance<JsonObject>().firstOrNull {
                     it["atlas_tile"].str() == base.oldAlias &&
                         (asInt(it["atlas_index"]) ?: 0) == base.oldIndex
-                } ?: Bedrock.vanillaFlipbooks[base.oldAlias to base.oldIndex] ?: return@mapNotNull null
+                } ?: if ("${base.oldPath}.png" !in files) Bedrock.vanillaFlipbooks[base.oldAlias to base.oldIndex] else null
+                var image = Png.decode(fallbackImage(base.oldPath))
+                val stripPath = base.path + "_animation"
+                if (source != null) {
+                    files["$stripPath.png"] = fallbackImage(source.getValue("flipbook_texture").str()!!)
+                    if (image.height > image.width) image = image.crop(0, 0, image.width, image.width)
+                }
+                files["${base.path}.png"] = png(image)
+                if (source == null) return@mapNotNull null
                 val f = LinkedHashMap(source)
+                f["flipbook_texture"] = JsonPrimitive(stripPath)
                 f["atlas_tile"] = JsonPrimitive(base.alias)
                 f["atlas_tile_variant"] = JsonPrimitive(0)
                 f.remove("atlas_index")
@@ -957,6 +969,7 @@ object Converter {
                     "uuid" to JsonPrimitive(Uuid5.of(ns, "resources").toString()),
                     "version" to version,
                 )))),
+                "metadata" to JsonObject(mapOf("product_type" to JsonPrimitive("addon"))),
             )))
             pack.get("pack.png")?.takeIf { it.isNotEmpty() }?.let { icon ->
                 try {
