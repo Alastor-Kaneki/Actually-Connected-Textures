@@ -21,7 +21,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class CreatorUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
-    private val vm get() = ViewModelProvider(compose.activity)[AppViewModel::class.java]
+    private val vm get() = ViewModelProvider(compose.activity, ViewModelProvider.AndroidViewModelFactory(compose.activity.application))[AppViewModel::class.java]
 
     @Test fun createEditPersistAndBuildPack() {
         compose.waitUntil(10000) { !vm.creator.busy }
