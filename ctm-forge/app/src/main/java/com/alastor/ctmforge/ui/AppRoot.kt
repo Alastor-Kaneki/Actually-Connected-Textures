@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.outlined.AddBox
+import androidx.compose.material.icons.rounded.AddBox
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Inventory2
@@ -61,6 +63,8 @@ fun AppRoot(vm: AppViewModel, onPickFile: () -> Unit) {
     BackHandler(enabled = top != null) { vm.pop() }
     BackHandler(enabled = top == null && vm.tab != Tab.BROWSE) { vm.tab = Tab.BROWSE }
 
+    BackHandler(enabled = top == null && vm.tab == Tab.CREATE && vm.creator.project != null) { vm.creator.close() }
+
     val saveable = rememberSaveableStateHolder()
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(
@@ -95,6 +99,7 @@ private class TabItem(val tab: Tab, val label: String, val icon: ImageVector, va
 
 private val TABS = listOf(
     TabItem(Tab.BROWSE, "Browse", Icons.Outlined.Explore, Icons.Rounded.Explore),
+    TabItem(Tab.CREATE, "Create", Icons.Outlined.AddBox, Icons.Rounded.AddBox),
     TabItem(Tab.LIBRARY, "Library", Icons.Outlined.Inventory2, Icons.Rounded.Inventory2),
     TabItem(Tab.SETTINGS, "Settings", Icons.Outlined.Settings, Icons.Rounded.Settings),
 )
@@ -108,7 +113,7 @@ private fun MainTabs(vm: AppViewModel, onPickFile: () -> Unit) {
         topBar = {
             if (vm.tab != Tab.BROWSE) {
                 TopAppBar(
-                    title = { Text(if (vm.tab == Tab.LIBRARY) "Library" else "Settings") },
+                    title = { Text(when (vm.tab) { Tab.LIBRARY -> "Library"; Tab.CREATE -> "Pack creator"; else -> "Settings" }) },
                     windowInsets = topInsets(immersive),
                 )
             }
@@ -145,6 +150,7 @@ private fun MainTabs(vm: AppViewModel, onPickFile: () -> Unit) {
         tabState.SaveableStateProvider(vm.tab.name) {
             when (vm.tab) {
                 Tab.BROWSE -> BrowseScreen(vm, padding, onPickFile)
+                Tab.CREATE -> CreatorScreen(vm.creator, padding)
                 Tab.LIBRARY -> LibraryScreen(vm, padding, onPickFile)
                 Tab.SETTINGS -> SettingsScreen(vm, padding)
             }

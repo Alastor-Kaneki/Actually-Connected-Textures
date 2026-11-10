@@ -12,6 +12,32 @@ natively, CurseForge and Planet Minecraft in the built-in browser, or open a .zi
   The mod (`ConnectedTextures.levipack`) ships in `app/src/main/assets`; GitHub Actions
   replaces it with the one it builds from `../mod`.
 
+## Create your own packs
+
+Open **Create → New pack**. Name the pack, choose a vanilla block ID and faces,
+then select single texture, 5-tile compact CTM, 47-tile CTM, horizontal/vertical
+connections, or 1–16 random variants. Import each tile or select a complete set
+of PNGs in one operation (natural filename order: 0, 1, …, 10).
+
+Enable **Animated textures** for custom animations. Import a vertical strip of
+square frames, or use **Assemble separate PNG frames**. Set ticks per frame
+(20 ticks = one second), an optional zero-based frame sequence such as `0,1,2,1`,
+and frame blending. Animated tiles in a rule share timing and frame count;
+static tiles can be mixed in. Each tile has a play/pause preview. Turning animation
+off uses its first frame, while retaining the imported strip in the draft.
+
+PNGs must have a power-of-two width from 8 to 256 pixels, with up to 64 frames.
+The builder checks missing tiles, unsupported blocks, overlapping faces and
+animation limits before export. Maximums: 32 rules, 16 million source pixels,
+and a 16,384-pixel animated sheet height. CTM uses OptiFine tile order.
+
+Drafts save locally with their own copies of textures and can be reopened from
+Create. **Build .mcpack** opens the existing preview/save/share/install page.
+Rebuilding a draft preserves its pack UUID and increments its version, even
+if renamed. Different drafts never overwrite each other. Generated packs need
+the Connected Textures LeviLauncher mod; this edits textures on existing blocks,
+not block geometry or new block registrations.
+
 ## Build
 
 Needs JDK 17+ and the Android SDK (platform 36, build-tools 36.0.0). Set `ANDROID_HOME`
