@@ -924,8 +924,8 @@ object Converter {
             // animation supplied by this pack over the vanilla animation entry.
             val baseFlips = baseAnimations.mapNotNull { base ->
                 val source = flipbooks.filterIsInstance<JsonObject>().firstOrNull {
-                    it["atlas_tile"]?.jsonPrimitive?.content == base.oldAlias &&
-                        (it["atlas_index"]?.jsonPrimitive?.intOrNull ?: 0) == base.oldIndex
+                    it["atlas_tile"].str() == base.oldAlias &&
+                        (asInt(it["atlas_index"]) ?: 0) == base.oldIndex
                 } ?: Bedrock.vanillaFlipbooks[base.oldAlias to base.oldIndex] ?: return@mapNotNull null
                 val f = LinkedHashMap(source)
                 f["atlas_tile"] = JsonPrimitive(base.alias)
