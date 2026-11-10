@@ -75,6 +75,7 @@ UseNewFn g_useNewOrig = nullptr;
 BuildFn g_buildOrig = nullptr;
 VertexUVFn g_vertexUVOrig = nullptr;
 GetBlockFn g_getBlock = nullptr;
+GetBiomeFn g_getBiome = nullptr;
 UvCopyFn g_uvCopy = nullptr;
 UvDtorFn g_uvDtor = nullptr;
 GraphicsForBlockFn g_graphicsForBlock = nullptr;
@@ -108,6 +109,7 @@ struct PaneState {
 };
 
 struct ThreadState {
+    void* blockTessellator = nullptr;
     int terrainDepth = 0;  // > 0 while RenderChunkBuilder::build runs on this thread
     PaneState pane;
     struct OverlayState {
@@ -136,6 +138,44 @@ const void* blockAt(void* region, ctm::Int3 q) {
     const int p[3] = {q.x, q.y, q.z};
     return g_getBlock(region, p, 0);
 }
+
+// Names are owned by the game and stay alive throughout the chunk build.
+std::string_view blockName(const void* block) {
+    const void* legacy = legacyOf(block);
+    if (!legacy) return {};
+    const auto& name = at<std::string>(legacy, off::Legacy_Name);
+    return name.size() <= 128 ? std::string_view(name) : std::string_view{};
+}
+
+bool connects(const ctm::SheetSpec& spec, const void* other, const void* legacy) {
+    return spec.conditions.connections.empty() ? legacyOf(other) == legacy
+        : ctm::nameInList(spec.conditions.connections, blockName(other));
+}
+
+struct RuleContext {
+    void* region;
+    ctm::Int3 pos;
+    bool loadedBiome = false;
+    std::string_view biome;
+    bool matches(const ctm::SheetSpec& spec) {
+        const auto& c = spec.conditions;
+        if (c.conditional() && !region) return false;
+        if (!c.biomes.empty() && !loadedBiome) {
+            loadedBiome = true;
+            const int p[3] = {pos.x, pos.y, pos.z};
+            const void* b = g_getBiome ? g_getBiome(region, p) : nullptr;
+            if (b) {
+                const auto& name = at<std::string>(b, off::Biome_Name);
+                if (name.size() <= 128) biome = name;
+            }
+        }
+        return ctm::conditionsMatch(c, biome, [&](std::string_view names) {
+            for (const auto& frame : ctm::kFaceFrames)
+                if (ctm::nameInList(names, blockName(blockAt(region, pos + frame.normal)))) return true;
+            return false;
+        });
+    }
+};
 
 // Variations of one face/variant of a BlockGraphics, mirroring BlockGraphics::getTexture.
 // minCount = 2 for the converter's [base, sheet] lists; 1 also accepts "direct" packs.
@@ -169,12 +209,15 @@ const void* findSheetVariation(const void* graphics, size_t face, uint32_t varia
 // tile source) plus every overlay sheet, in pack order.
 struct SheetSet {
     const void* normal = nullptr;
+    const void* base = nullptr;
+    bool conditionalNormal = false;
+    bool hasSheet = false;
     int overlayCount = 0;
     const void* overlays[4] = {};
     ctm::SheetSpec specs[4] = {};
 };
 
-SheetSet findSheets(const void* graphics, size_t face, uint32_t variant) {
+SheetSet findSheets(const void* graphics, size_t face, uint32_t variant, RuleContext& context) {
     SheetSet out;
     const char* fb = at<const char*>(graphics, off::BG_Faces);
     const char* fe = at<const char*>(graphics, off::BG_Faces + 8);
@@ -195,15 +238,18 @@ SheetSet findSheets(const void* graphics, size_t face, uint32_t variant) {
     for (size_t i = 0; i < n && i < 256; ++i) {
         const char* uv = ub + i * off::UV_Size;
         ctm::SheetSpec spec;
-        if (!sheetSpecOf(uv, spec)) continue;
+        if (!sheetSpecOf(uv, spec)) { if (!out.base) out.base = uv; continue; }
+        out.hasSheet = true;
+        if (!context.matches(spec)) continue;
         if (spec.overlay) {
             if (out.overlayCount < 4) {
                 out.overlays[out.overlayCount] = uv;
                 out.specs[out.overlayCount] = spec;
                 ++out.overlayCount;
             }
-        } else if (!out.normal) {
+        } else if (!out.normal || (!out.conditionalNormal && spec.conditions.conditional())) {
             out.normal = uv;
+            out.conditionalNormal = spec.conditions.conditional();
         }
     }
     return out;
@@ -265,7 +311,7 @@ int cubeTile(void* bt, const void* block, const float* p, int face, const ctm::S
                         static_cast<int>(std::floor(p[2]))};
     const void* legacy = legacyOf(block);
     if (!legacy || legacyOf(blockAt(region, pos)) != legacy) return ctm::defaultTile(spec);
-    auto match = [&](ctm::Int3 q) { return legacyOf(blockAt(region, q)) == legacy; };
+    auto match = [&](ctm::Int3 q) { return connects(spec, blockAt(region, q), legacy); };
     return ctm::selectTile(spec, ctm::kFaceFrames[face], pos, match);
 }
 
@@ -306,7 +352,10 @@ void emitOverlay(void* bt, void* tess, const void* block, const float* p, const 
     if (!region || !legacy || !p) return;
     const ctm::Int3 pos{static_cast<int>(std::floor(p[0])), static_cast<int>(std::floor(p[1])),
                         static_cast<int>(std::floor(p[2]))};
-    auto different = [&](ctm::Int3 q) { return legacyOf(blockAt(region, q)) != legacy; };
+    auto different = [&](ctm::Int3 q) {
+        const void* other = blockAt(region, q);
+        return spec.conditions.connections.empty() ? legacyOf(other) != legacy : connects(spec, other, legacy);
+    };
     int tiles[3] = {};
     const int n = ctm::overlayTiles(spec, ctm::kFaceFrames[F], pos, different, tiles);
     const uint16_t w = at<uint16_t>(sheet, off::UV_W), h = at<uint16_t>(sheet, off::UV_H);
@@ -373,11 +422,14 @@ const void* getTextureDetour(void* graphics, const int* pos, size_t face, uintpt
     PaneState& ps = ts.pane;
     ctm::SheetSpec spec;
     const void* sheet = nullptr;
-    if (res && sheetSpecOf(res, spec)) {
-        sheet = res;  // "direct" pack: the block's texture is the sheet itself
-    } else if (ts.terrainDepth > 0 && (ps.active ? g_cfg.panes : g_cfg.blocks)) {
-        const SheetSet set = findSheets(graphics, face, static_cast<uint32_t>(variant));
+    if (ts.terrainDepth > 0 && (ps.active ? g_cfg.panes : g_cfg.blocks)) {
+        void* region = ps.active ? ps.region : ts.blockTessellator ? at<void*>(ts.blockTessellator, off::BT_Region) : nullptr;
+        RuleContext context{pos ? region : nullptr, pos ? ctm::Int3{pos[0], pos[1], pos[2]} : ctm::Int3{}};
+        const SheetSet set = findSheets(graphics, face, static_cast<uint32_t>(variant), context);
         sheet = set.normal;
+        // Also replace a randomly selected sheet with the proper fallback when no rule matches.
+        if (set.hasSheet && set.base) res = set.base;
+        if (ps.active && face == 0) ps.haveSheet = false;
         if (set.overlayCount > 0 && !ps.active) {
             ts.overlay.active = true;
             ts.overlay.count = set.overlayCount;
@@ -397,6 +449,8 @@ const void* getTextureDetour(void* graphics, const int* pos, size_t face, uintpt
             return res;
         }
     }
+    if (!sheet && ts.terrainDepth <= 0 && res && sheetSpecOf(res, spec) &&
+        !spec.conditions.conditional() && spec.conditions.valid) sheet = res;
     if (!sheet) return res;
     if (!g_reportedSheet.exchange(true, std::memory_order_relaxed)) {
         const std::string line = "Connected textures active - first tile sheet in use: " + *uvPath(sheet);
@@ -420,7 +474,7 @@ void emitQuad(PaneState& ps) {
         int tile = ctm::defaultTile(ps.spec);
         ctm::FaceFrame frame{};
         if (g_cfg.panes && ps.region && ps.legacy && ctm::quadFrame(ps.verts, frame)) {
-            auto match = [&](ctm::Int3 q) { return legacyOf(blockAt(ps.region, q)) == ps.legacy; };
+            auto match = [&](ctm::Int3 q) { return connects(ps.spec, blockAt(ps.region, q), ps.legacy); };
             tile = ctm::selectTile(ps.spec, frame, ps.pos, match);
         }
         r = ctm::tileRect(ps.spec, tile, ps.rect);
@@ -508,11 +562,14 @@ void buildDetour(uintptr_t builder, uintptr_t geometry, uintptr_t transparentLea
         return;
     }
     ThreadState& ts = t_state;
+    void* previous = ts.blockTessellator;
+    ts.blockTessellator = at<void*>(reinterpret_cast<void*>(builder), off::Builder_Tessellator);
     ++ts.terrainDepth;
     struct Done {
         ThreadState& ts;
-        ~Done() { --ts.terrainDepth; }
-    } done{ts};
+        void* previous;
+        ~Done() { --ts.terrainDepth; ts.blockTessellator = previous; }
+    } done{ts, previous};
     orig(builder, geometry, transparentLeaves, lighting, forExport, caps);
 }
 
@@ -616,7 +673,7 @@ bool setup() {
         if (!g_addr[i]) {
             LOGE("signature not found: %s", kSigs[i].name);
             status((std::string("Not found in this game version: ") + kSigs[i].name).c_str());
-            ok = false;
+            if (kSigs[i].required) ok = false;
         }
     }
     if (!ok) {
@@ -624,6 +681,8 @@ bool setup() {
         return false;
     }
     g_getBlock = reinterpret_cast<GetBlockFn>(g_addr[Sig_GetBlock]);
+    g_getBiome = reinterpret_cast<GetBiomeFn>(g_addr[Sig_GetBiome]);
+    status(g_getBiome ? "Biome-dependent textures available." : "Biome lookup unavailable: biome rules will be skipped.");
     g_uvCopy = reinterpret_cast<UvCopyFn>(g_addr[Sig_UvCopy]);
     g_uvDtor = reinterpret_cast<UvDtorFn>(g_addr[Sig_UvDtor]);
     g_graphicsForBlock = reinterpret_cast<GraphicsForBlockFn>(g_addr[Sig_GraphicsForBlock]);
@@ -699,7 +758,7 @@ CTM_EXPORT bool PLMod_Load(JavaVM*, const PLModInfo* info) {
         g_statusPath = std::string(root) + "/status.txt";
     }
     if (!gameProcess()) return true;
-    status("Connected Textures 1.2.0 for Minecraft 1.26.60 / 1.26.62", true);
+    status("Connected Textures 1.3.0 for Minecraft 1.26.60 / 1.26.62", true);
     loadConfig(root);
     LOGI("loading (blocks=%d panes=%d enabled=%d)", g_cfg.blocks, g_cfg.panes, g_cfg.enabled);
     trySetup();

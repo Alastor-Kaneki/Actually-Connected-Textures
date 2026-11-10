@@ -550,6 +550,59 @@ def stack(frames: list) -> Image.Image:
 # --------------------------------------------------------------------------- rules
 
 @dataclass
+class RuleConditions:
+    biomes: list[str] = field(default_factory=list)
+    exclude_biomes: bool = False
+    connect_blocks: list[str] = field(default_factory=list)
+    neighbor_blocks: list[str] = field(default_factory=list)
+
+    @property
+    def conditional(self):
+        return bool(self.biomes or self.neighbor_blocks)
+
+    @property
+    def path(self):
+        parts = []
+        if self.biomes:
+            parts.append(("x-" if self.exclude_biomes else "b-") + ".".join(self.biomes))
+        if self.connect_blocks:
+            parts.append("c-" + ".".join(self.connect_blocks))
+        if self.neighbor_blocks:
+            parts.append("n-" + ".".join(self.neighbor_blocks))
+        return "when/" + "/".join(parts) + "/end/" if parts else ""
+
+
+def rule_conditions(biomes="", connect_blocks="", neighbor_blocks=""):
+    aliases = {'snowy_plains': 'ice_plains', 'snowy_taiga': 'cold_taiga', 'old_growth_pine_taiga': 'mega_taiga', 'old_growth_spruce_taiga': 'redwood_taiga_mutated', 'old_growth_birch_forest': 'birch_forest_mutated', 'windswept_hills': 'extreme_hills', 'windswept_forest': 'extreme_hills_plus_trees', 'windswept_gravelly_hills': 'extreme_hills_mutated', 'snowy_beach': 'cold_beach', 'stony_shore': 'stone_beach', 'sparse_jungle': 'jungle_edge', 'badlands': 'mesa', 'wooded_badlands': 'mesa_plateau_stone', 'eroded_badlands': 'mesa_bryce', 'windswept_savanna': 'savanna_mutated', 'swamp': 'swampland', 'mushroom_fields': 'mushroom_island', 'dark_forest': 'roofed_forest', 'nether_wastes': 'hell', 'the_end': 'sky'}
+    def names(value):
+        result = []
+        for token in re.split(r"[\s,]+", value.strip()) if value.strip() else []:
+            name = token.lower().removeprefix("minecraft:")
+            if not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", name):
+                raise ValueError("Use vanilla names separated by spaces; block states and numeric IDs are not supported.")
+            result.append(name)
+        return sorted(set(result))
+    value = biomes.strip()
+    exclude = value.startswith("!")
+    biome_names = names(value[1:] if exclude else value)
+    if exclude and not biome_names:
+        raise ValueError("Add biome names after !.")
+    def blocks(value):
+        result = []
+        for name in names(value):
+            block = bedrock_block(name)
+            if block not in VANILLA_BLOCKS:
+                raise ValueError(f"Unknown connection block '{name}'.")
+            result.append(block)
+        return sorted(set(result))
+    expanded = sorted(set(biome_names + [aliases[n] for n in biome_names if n in aliases]))
+    result = RuleConditions(expanded, exclude, blocks(connect_blocks), blocks(neighbor_blocks))
+    if any(len(".".join(v)) > 200 for v in (result.biomes, result.connect_blocks, result.neighbor_blocks)) or len(result.path) > 500:
+        raise ValueError("Condition lists are too long. Use fewer names per rule.")
+    return result
+
+
+@dataclass
 class Rule:
     path: str
     props: dict
@@ -567,6 +620,7 @@ class Rule:
     base: "Tex | None" = None                            # explicit base texture (Fusion)
     layout: "str | None" = None                          # Fusion layout of the tiles
     overlay: bool = False                                # OptiFine overlay* methods
+    conditions: RuleConditions = field(default_factory=RuleConditions)
 
 
 def parse_properties(text: str) -> dict:
@@ -680,16 +734,21 @@ def read_rules(pack: JavaPack, log: list[str]) -> list[Rule]:
         faces = set()
         for f in re.split(r"[\s,]+", props.get("faces", "all")):  # OptiFine allows spaces or commas
             faces |= OPTIFINE_FACES.get(f.lower(), set())
-        for unsupported in ("biomes", "heights", "minHeight", "maxHeight", "metadata", "name"):
+        for unsupported in ("heights", "minHeight", "maxHeight", "metadata", "name"):
             if unsupported in props:
                 log.append(f"note {path}: '{unsupported}' is ignored")
         r = Rule(path, props, method, blocks, faces or set(FACE_NAMES), pack=pack, textures=textures)
         r.overlay = overlay
+        try:
+            r.conditions = rule_conditions(props.get("biomes", ""), props.get("connectBlocks", ""), props.get("ctmforge.neighborBlocks", ""))
+        except ValueError as e:
+            log.append(f"skip {path}: {e}")
+            continue
         connect = props.get("connect", "block").lower()
         if connect not in ("block", ""):
             log.append(f"note {path}: connect={connect} is treated as connect=block")
         if overlay:
-            for k in ("connectTiles", "connectBlocks", "tintIndex", "tintBlock", "layer"):
+            for k in ("connectTiles", "tintIndex", "tintBlock", "layer"):
                 if k in props:
                     log.append(f"note {path}: '{k}' is ignored")
         r.inner_seams = props.get("innerSeams", "false").lower() == "true"
@@ -1384,9 +1443,12 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
         return b.getvalue()
 
     # Pass 1: build every rule's sheet and collect the sheets that apply to each
-    # (block, face). The first non-overlay rule wins a face; overlays all stack.
+    # (block, face). Keep conditional rules and one unconditional fallback; overlays stack.
     block_faces: dict[tuple, dict] = {}
     for rule in rules:
+        if direct and rule.conditions.path:
+            log.append(f"skip {rule.path}: conditional and custom connection rules require standard mode")
+            continue
         layout = rule_layout(rule, log)
         if not layout:
             continue
@@ -1420,7 +1482,7 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
             nth = rule_count.get(block, 0)
             rule_count[block] = nth + 1
             stem = f"{slug}_{block}" + (f"_{nth + 1}" if nth else "")
-            sheet_path = f"textures/blocks/ctm/{spec}/{stem}"
+            sheet_path = f"textures/blocks/ctm/{spec}/{rule.conditions.path}{stem}"
             base_path = f"textures/blocks/ctm/base/{stem}"
             files[sheet_path + ".png"] = png(sheet)
             base_tex = None
@@ -1434,13 +1496,13 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
             base_img = base_tex.first if base_tex is not None else tile0
             if animated and strip_path is None:
                 # parseable like the sheet itself, in case the game reports the flipbook's path
-                strip_path = f"textures/blocks/ctm/{spec}/anim/{stem}"
+                strip_path = f"textures/blocks/ctm/{spec}/{rule.conditions.path}anim/{stem}"
                 files[strip_path + ".png"] = png(stack(sheets))
             if direct and layout.overlay:
                 log.append(f"note {rule.path}: overlay rules are not supported in direct mode")
                 continue
             entry = {
-                "layout": layout, "spec": spec, "sheet_path": sheet_path, "base_path": base_path,
+                "layout": layout, "conditions": rule.conditions, "spec": spec, "sheet_path": sheet_path, "base_path": base_path,
                 "base_img": base_img, "tile0": tile0, "base_tex": base_tex, "animated": animated,
                 "strip_path": strip_path,
                 "frames": frames if animated else None, "tpf": tpf if animated else 1,
@@ -1449,7 +1511,7 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
             faces = block_faces.setdefault((block, tg.index), {})
             for f in tg.faces:
                 lst = faces.setdefault(f, [])
-                if not layout.overlay and any(not e["layout"].overlay for e in lst):
+                if not layout.overlay and not rule.conditions.conditional and any(not e["layout"].overlay and not e["conditions"].conditional for e in lst):
                     log.append(f"note {rule.path}: {block} {f} already covered by an earlier rule")
                     continue
                 if direct and lst:
@@ -1469,10 +1531,10 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
         for f, entries in faces.items():
             # Faces with different vanilla textures need their own base, so an
             # overlay-only block (e.g. grass) still shows each face's own texture.
-            base_key = next((e["base_path"] for e in entries if not e["layout"].overlay), None)
+            base_key = next((e["base_path"] for e in entries if not e["layout"].overlay and not e["conditions"].conditional), None)
             if base_key is None:
                 raw = alias_entries(face_aliases(VANILLA_BLOCKS[block]).get(f))
-                paths = entry_paths(raw[0]) if raw else []
+                paths = entry_paths(raw[index or 0]) if raw and (index or 0) < len(raw) else []
                 base_key = paths[0] if paths else ""
             key = (tuple(e["sheet_path"] for e in entries), base_key)
             groups.setdefault(key, []).append(f)
@@ -1492,7 +1554,7 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
         for gi, (key, group_faces) in enumerate(groups.items()):
             entries = faces[group_faces[0]]
             alias = f"ctm_{slug}_{block}" + (f"_{index}" if index is not None else "") + (f"_{gi}" if gi else "")
-            normal = next((e for e in entries if not e["layout"].overlay), None)
+            normal = next((e for e in entries if not e["layout"].overlay and not e["conditions"].conditional), None)
             if direct:  # fallback layout: the block's texture is the sheet itself (needs the mod)
                 value = entries[0]["sheet_path"]
             else:
@@ -1527,7 +1589,7 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
                 if not e["animated"]:
                     continue
                 idx = index if array else None
-                if not direct and e["base_tex"] is not None and e["base_tex"].animated:
+                if not direct and e is normal and e["base_tex"] is not None and e["base_tex"].animated:
                     bst, bfr, btpf, bbl = merge_timeline([e["base_tex"]])
                     bstrip = f"textures/blocks/ctm/base/anim/{slug}_{block}"
                     files[bstrip + ".png"] = png(stack([e["base_tex"].frames[st[0]].resize(e["tile0"].size, Image.NEAREST)

@@ -35,6 +35,7 @@ enum Sig : int {
     Sig_UvDtor,
     Sig_VertexUV,
     Sig_GraphicsForBlock,
+    Sig_GetBiome,
     Sig_Count
 };
 
@@ -56,6 +57,7 @@ inline constexpr SigDef kSigs[Sig_Count] = {
     // "09 ? 4? F9" is `ldr x9, [x8, #page offset]` reading a global's bucket count. The offset moves
     // whenever the game is relinked (0x238 in 1.26.60, 0x878 in 1.26.62), so only the opcode is matched.
     {"GraphicsForBlock (Connected Textures)", "FD 7B BE A9 F3 0B 00 F9 FD 03 00 91 F3 03 00 AA ? ? ? ? ? ? ? ? F3 0B 40 F9 FD 7B C2 A8 C0 03 5F D6 E0 03 13 AA ? ? ? ? ? ? ? ? E0 03 13 AA ? ? ? ? ? ? ? ? 09 ? 4? F9 ? ? ? ? 20 01 67 9E 08 00 40 B9 00 58 20 0E", true},
+    {"BlockSourceGetBiome", "? ? ? D1 ? ? ? A9 ? ? ? F9 ? ? ? A9 ? ? ? 91 55 D0 3B D5 F3 03 00 AA F4 03 01 AA ? ? ? F9 ? ? ? F9 ? ? ? F9 ? ? ? F9 00 01 3F D6", false},
 };
 
 }  // namespace game
@@ -65,12 +67,16 @@ namespace game {
 // ------------------------------------------------------------------ layouts (1.26.60, arm64; unchanged in 1.26.62)
 namespace off {
 // BlockTessellator
-inline constexpr size_t BT_Region = 0x8;              // IConstBlockSource*
+inline constexpr size_t BT_Region = 0x8;              // BlockSource*
 inline constexpr size_t BT_InternalTexture = 0x18;    // TextureUVCoordinateSet (forced texture, e.g. breaking cracks)
 inline constexpr size_t BT_UseInternalTexture = 0x71; // bool
 inline constexpr size_t BT_XFlipTexture = 0x74;       // bool
 inline constexpr size_t BT_FlipFace = 0x174;          // uint8_t[6]
 inline constexpr uint8_t FlipDontRotate = 5;
+// RenderChunkBuilder owns a BlockTessellator; its region is assigned during build.
+inline constexpr size_t Builder_Tessellator = 0x10;
+// Biome::mHash at 0x190; HashedString::mStr at +8 (verified in both game binaries).
+inline constexpr size_t Biome_Name = 0x198;
 // Block -> BlockLegacy -> HashedString name
 inline constexpr size_t Block_Legacy = 0x68;
 inline constexpr size_t Legacy_Name = 0xD0;           // std::string inside the HashedString at +0xC8
@@ -93,6 +99,7 @@ using PaneFn = bool (*)(void* bt, void* tess, const void* block, const int* pos,
 using UseNewFn = bool (*)(const void* block, bool onlyNew);
 using BuildFn = void (*)(void* builder, void* geometry, bool transparentLeaves, int32_t lighting, bool forExport,
                          const void* lightingCaps);
+using GetBiomeFn = const void* (*)(void* region, const int* pos);
 using GetBlockFn = const void* (*)(void* region, const int* pos, int32_t layer);
 using UvCopyFn = void* (*)(void* dst, const void* src);
 using UvDtorFn = void (*)(void* uv);

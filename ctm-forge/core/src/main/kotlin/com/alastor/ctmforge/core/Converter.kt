@@ -243,6 +243,7 @@ object Converter {
         var layout: String? = null,
         /** OptiFine overlay* methods. */
         var overlay: Boolean = false,
+        var conditions: RuleConditions = RuleConditions(),
     )
 
     private class Layout(val method: String, val inputs: List<Tex>, val build: (List<Img>) -> List<Img>, val cols: Int, val count: Int, val overlay: Boolean = false)
@@ -262,6 +263,7 @@ object Converter {
         val animated: Boolean,
         val stripPath: String?,
         val timeline: Timeline?,
+        val conditions: RuleConditions,
     )
 
     private class Job(val pack: JavaPack, val opt: ConvertOptions) {
@@ -327,15 +329,25 @@ object Converter {
                 val faces = LinkedHashSet<String>()
                 // OptiFine separates faces with spaces or commas ("faces=north,south,east,west")
                 for (f in listItems(props["faces"] ?: "all")) faces += OPTIFINE_FACES[f.lowercase()] ?: emptySet()
-                for (unsupported in listOf("biomes", "heights", "minHeight", "maxHeight", "metadata", "name")) {
+                for (unsupported in listOf("heights", "minHeight", "maxHeight", "metadata", "name")) {
                     if (unsupported in props) log += "note $path: '$unsupported' is ignored"
                 }
                 val r = Rule(path, props, method, blocks, faces.ifEmpty { FACE_NAMES.toSet() }, textures = textures)
                 r.overlay = overlay
+                r.conditions = try {
+                    RuleConditions.parse(props["biomes"] ?: "", props["connectBlocks"] ?: "", props["ctmforge.neighborBlocks"] ?: "")
+                } catch (e: IllegalArgumentException) {
+                    log += "skip $path: ${e.message}"
+                    continue
+                }
+                if (opt.direct && r.conditions.path.isNotEmpty()) {
+                    log += "skip $path: conditional and custom connection rules require standard mode"
+                    continue
+                }
                 val connect = (props["connect"] ?: "block").lowercase()
                 if (connect != "block" && connect != "") log += "note $path: connect=$connect is treated as connect=block"
                 if (overlay) {
-                    for (k in listOf("connectTiles", "connectBlocks", "tintIndex", "tintBlock", "layer")) {
+                    for (k in listOf("connectTiles", "tintIndex", "tintBlock", "layer")) {
                         if (k in props) log += "note $path: '$k' is ignored"
                     }
                 }
@@ -643,7 +655,7 @@ object Converter {
             val animatedList = ArrayList<String>()
 
             // Pass 1: build every rule's sheet and collect the sheets that apply to each
-            // (block, face). The first non-overlay rule wins a face; overlays all stack.
+            // (block, face). Keep conditional rules plus one unconditional fallback; overlays stack.
             val blockFaces: MutableMap<Pair<String, Int?>, MutableMap<String, MutableList<SheetEntry>>> = LinkedHashMap()
             for ((ri, rule) in rules.withIndex()) {
                 progress(ri, rules.size)
@@ -695,7 +707,7 @@ object Converter {
                     val nth = ruleCount[block] ?: 0
                     ruleCount[block] = nth + 1
                     val stem = "${slug}_$block" + if (nth > 0) "_${nth + 1}" else ""
-                    val sheetPath = "textures/blocks/ctm/$spec/$stem"
+                    val sheetPath = "textures/blocks/ctm/$spec/${rule.conditions.path}$stem"
                     val basePath = "textures/blocks/ctm/base/$stem"
                     files["$sheetPath.png"] = sheetPng ?: png(sheet).also { sheetPng = it }
                     var baseTex: Tex? = null
@@ -706,18 +718,18 @@ object Converter {
                     val baseImg = baseTex?.first ?: tile0
                     if (animated && stripPath == null) {
                         // parseable like the sheet itself, in case the game reports the flipbook's path
-                        stripPath = "textures/blocks/ctm/$spec/anim/$stem"
+                        stripPath = "textures/blocks/ctm/$spec/${rule.conditions.path}anim/$stem"
                         files["$stripPath.png"] = png(Anim.stack(frameSheets))
                     }
                     if (opt.direct && layout.overlay) {
                         log += "note ${rule.path}: overlay rules are not supported in direct mode"
                         continue
                     }
-                    val sheetEntry = SheetEntry(layout, spec, sheetPath, basePath, baseImg, tile0, baseTex, animated, stripPath, timeline)
+                    val sheetEntry = SheetEntry(layout, spec, sheetPath, basePath, baseImg, tile0, baseTex, animated, stripPath, timeline, rule.conditions)
                     val faces = blockFaces.getOrPut(block to tg.index) { LinkedHashMap() }
                     for (f in tg.faces) {
                         val lst = faces.getOrPut(f) { ArrayList() }
-                        if (!layout.overlay && lst.any { !it.layout.overlay }) {
+                        if (!layout.overlay && !rule.conditions.conditional && lst.any { !it.layout.overlay && !it.conditions.conditional }) {
                             log += "note ${rule.path}: $block $f already covered by an earlier rule"
                             continue
                         }
@@ -741,9 +753,9 @@ object Converter {
                 for ((f, entries) in faces) {
                     // Faces with different vanilla textures need their own base, so an
                     // overlay-only block (e.g. grass) still shows each face's own texture.
-                    val baseKey = entries.firstOrNull { !it.layout.overlay }?.basePath
+                    val baseKey = entries.firstOrNull { !it.layout.overlay && !it.conditions.conditional }?.basePath
                         ?: Bedrock.aliasEntries(Bedrock.faceAliases(Vanilla.blocks.getValue(block) as JsonObject)[f])
-                            ?.firstOrNull()?.let { Bedrock.entryPaths(it).firstOrNull() } ?: ""
+                            ?.getOrNull(index ?: 0)?.let { Bedrock.entryPaths(it).firstOrNull() } ?: ""
                     groups.getOrPut(entries.map { it.sheetPath } to baseKey) { ArrayList() } += f
                 }
                 val vanilla = Vanilla.blocks.getValue(block) as JsonObject
@@ -767,7 +779,7 @@ object Converter {
                     val groupFaces = group.value
                     val entries2 = faces.getValue(groupFaces[0])
                     var alias = "ctm_${slug}_$block" + (if (index != null) "_$index" else "") + (if (gi > 0) "_$gi" else "")
-                    val normal = entries2.firstOrNull { !it.layout.overlay }
+                    val normal = entries2.firstOrNull { !it.layout.overlay && !it.conditions.conditional }
                     val value: JsonElement = if (opt.direct) { // fallback layout: the block's texture is the sheet itself
                         JsonPrimitive(entries2[0].sheetPath)
                     } else {
@@ -810,7 +822,7 @@ object Converter {
                         if (!e.animated) continue
                         val tl = e.timeline!!
                         val idx = if (array) index else null
-                        if (!opt.direct && e.baseTex != null && e.baseTex.animated) {
+                        if (!opt.direct && e === normal && e.baseTex != null && e.baseTex.animated) {
                             val bt = Anim.mergeTimeline(listOf(e.baseTex))
                             val bstrip = "textures/blocks/ctm/base/anim/${slug}_$block"
                             files["$bstrip.png"] = png(Anim.stack(bt.states.map { e.baseTex.frames[it[0]].resizeNearest(e.tile0.width, e.tile0.height) }))
