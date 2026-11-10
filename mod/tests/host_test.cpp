@@ -49,6 +49,7 @@ static void unitTests() {
     CHECK(s.conditions.valid && s.conditions.conditional());
     CHECK(nameInList(s.conditions.connections, "minecraft:tinted_glass"));
     CHECK(!nameInList(s.conditions.connections, "stained_glass"));
+    CHECK(nameInList("sea_lantern.sealantern", "minecraft:seaLantern"));
     auto touchingSand = [](std::string_view list) { return nameInList(list, "minecraft:sand"); };
     auto touchingStone = [](std::string_view list) { return nameInList(list, "stone"); };
     CHECK(conditionsMatch(s.conditions, "minecraft:desert", touchingSand));

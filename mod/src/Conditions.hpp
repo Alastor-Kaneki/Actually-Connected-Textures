@@ -20,7 +20,13 @@ inline bool nameInList(std::string_view list, std::string_view name) {
     if (name.empty()) return false;
     while (!list.empty()) {
         const auto dot = list.find('.');
-        if (list.substr(0, dot) == name) return true;
+        const auto candidate = list.substr(0, dot);
+        bool equal = candidate.size() == name.size();
+        for (size_t i = 0; equal && i < name.size(); ++i) {
+            const char lower = name[i] >= 'A' && name[i] <= 'Z' ? name[i] + ('a' - 'A') : name[i];
+            equal = candidate[i] == lower;
+        }
+        if (equal) return true;
         if (dot == std::string_view::npos) break;
         list.remove_prefix(dot + 1);
     }

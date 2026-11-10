@@ -590,10 +590,11 @@ def rule_conditions(biomes="", connect_blocks="", neighbor_blocks=""):
     def blocks(value):
         result = []
         for name in names(value):
-            block = bedrock_block(name)
+            block = bedrock_block(name) or next((b for b in VANILLA_BLOCKS if b.lower() == name), None)
             if block not in VANILLA_BLOCKS:
                 raise ValueError(f"Unknown connection block '{name}'.")
-            result.append(block)
+            result.append(block.lower())
+            result.extend(java for java, bedrock in JAVA_BLOCKS.items() if bedrock == block and java not in VANILLA_BLOCKS)
         return sorted(set(result))
     expanded = sorted(set(biome_names + [aliases[n] for n in biome_names if n in aliases]))
     result = RuleConditions(expanded, exclude, blocks(connect_blocks), blocks(neighbor_blocks))

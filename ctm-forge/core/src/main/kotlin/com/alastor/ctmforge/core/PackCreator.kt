@@ -162,13 +162,14 @@ object PackCreator {
                         }
                     }.toString().toByteArray()
                 }
+                fun tokens(value: String) = value.trim().split(Regex("[\\s,]+")).joinToString(" ")
                 files["$dir/rule.properties"] = buildString {
                     append("matchBlocks=minecraft:$block\nmethod=${rule.method.property}\n")
                     append("tiles=${images.indices.joinToString(" ")}\nfaces=${rule.faces}\n")
                     append("connect=block\ninnerSeams=${rule.innerSeams}\n")
-                    if (conditions.biomes.isNotEmpty()) append("biomes=${if (conditions.excludeBiomes) "!" else ""}${conditions.biomes.joinToString(" ")}\n")
-                    if (conditions.connectBlocks.isNotEmpty()) append("connectBlocks=${conditions.connectBlocks.joinToString(" ")}\n")
-                    if (conditions.neighborBlocks.isNotEmpty()) append("ctmforge.neighborBlocks=${conditions.neighborBlocks.joinToString(" ")}\n")
+                    if (conditions.biomes.isNotEmpty()) append("biomes=${tokens(rule.biomes)}\n")
+                    if (conditions.connectBlocks.isNotEmpty()) append("connectBlocks=${tokens(rule.connectBlocks)}\n")
+                    if (conditions.neighborBlocks.isNotEmpty()) append("ctmforge.neighborBlocks=${tokens(rule.neighborBlocks)}\n")
                 }.toByteArray()
                 if (ri == 0) files["pack.png"] = Png.encode(images.first().firstFrame(), 6)
             } catch (e: IllegalArgumentException) {

@@ -90,3 +90,12 @@ converter's output). The packs aren't included: they belong to their authors. Wi
 those tests skip. Screenshots go to `app/build/screens/`.
 
 Credits: hook signatures in the mod adapted from BedrockTools by RadiantByte (MIT).
+
+### Biome and neighbor rules (build 10)
+
+In **Create**, expand **Biome & neighbor rules** on a block rule. You can restrict
+its biomes, choose the blocks it connects to, or require it to touch a named block.
+These options also work with animated textures and survive saving/reopening drafts.
+Add multiple rules for the same faces with different conditions, plus an optional
+unfiltered fallback. Install the bundled **Connected Textures 1.3.0** mod and rebuild
+or reconvert packs to include their conditions. See [examples](../docs/conditional-textures.md).

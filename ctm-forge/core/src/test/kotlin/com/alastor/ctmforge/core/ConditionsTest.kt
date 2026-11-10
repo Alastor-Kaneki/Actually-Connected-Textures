@@ -49,11 +49,21 @@ class ConditionsTest {
         }
     }
 
+    @Test fun creatorDoesNotReinterpretCanonicalSnowAsJavaSnowLayers() {
+        val result = build(rule.copy(neighborBlocks = "snow_block"))
+        assertTrue(result.sheets.all { "/n-snow.snow_block/" in it.sheetPath })
+        assertTrue(result.sheets.none { "snow_layer" in it.sheetPath })
+    }
+
     @Test fun validatesNamesAndCanonicalizesBlockAndBiomeAliases() {
         val c = RuleConditions.parse("minecraft:snowy_plains, desert", "grass_block minecraft:glass", "sand")
         assertEquals(listOf("desert", "ice_plains", "snowy_plains"), c.biomes)
-        assertEquals(listOf("glass", "grass"), c.connectBlocks)
+        assertEquals(listOf("glass", "grass", "grass_block"), c.connectBlocks)
         assertFalse(RuleConditions.parse(connectBlocks = "glass").conditional)
+        assertEquals(listOf("sea_lantern", "sealantern"), RuleConditions.parse(connectBlocks = "sea_lantern").connectBlocks)
+        assertEquals(listOf("snow_layer"), RuleConditions.parse(connectBlocks = "snow").connectBlocks)
+        val again = RuleConditions.parse(connectBlocks = RuleConditions.parse(connectBlocks = "sea_lantern").connectBlocks.joinToString(" "))
+        assertEquals(listOf("sea_lantern", "sealantern"), again.connectBlocks)
         for (invalid in listOf("!", "desert !plains", "mod:desert", "../desert", "1"))
             assertFailsWith<IllegalArgumentException> { RuleConditions.parse(biomes = invalid) }
         for (invalid in listOf("not_a_block", "oak_log:axis=x", "stone[foo=bar]"))

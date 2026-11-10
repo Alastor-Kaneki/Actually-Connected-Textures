@@ -44,10 +44,12 @@ data class RuleConditions(
             val exclude = value.startsWith('!')
             val biomeNames = names(if (exclude) value.drop(1) else value)
             require(!exclude || biomeNames.isNotEmpty()) { "Add biome names after !." }
-            fun blocks(s: String) = names(s).map { name ->
-                val id = Bedrock.block(name)
+            fun blocks(s: String) = names(s).flatMap { name ->
+                val id = Bedrock.block(name) ?: Vanilla.blocks.keys.firstOrNull { it.equals(name, ignoreCase = true) }
                 require(id != null && id in Vanilla.blocks) { "Unknown connection block '$name'." }
-                id
+                // Resource-pack aliases and runtime registry names can differ. Avoid ambiguous
+                // Java names such as snow (snow_layer), which is itself another Bedrock block.
+                listOf(id.lowercase()) + JavaNames.blocks.filter { (java, bedrock) -> bedrock == id && java !in Vanilla.blocks }.keys
             }.distinct().sorted()
             val result = RuleConditions(biomeNames.flatMap { listOfNotNull(it, biomeAliases[it]) }.distinct().sorted(),
                 exclude, blocks(connectBlocks), blocks(neighborBlocks))
