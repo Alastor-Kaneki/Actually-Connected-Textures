@@ -555,10 +555,11 @@ class RuleConditions:
     exclude_biomes: bool = False
     connect_blocks: list[str] = field(default_factory=list)
     neighbor_blocks: list[str] = field(default_factory=list)
+    below_blocks: list[str] = field(default_factory=list)
 
     @property
     def conditional(self):
-        return bool(self.biomes or self.neighbor_blocks)
+        return bool(self.biomes or self.neighbor_blocks or self.below_blocks)
 
     @property
     def path(self):
@@ -569,10 +570,12 @@ class RuleConditions:
             parts.append("c-" + ".".join(self.connect_blocks))
         if self.neighbor_blocks:
             parts.append("n-" + ".".join(self.neighbor_blocks))
+        if self.below_blocks:
+            parts.append("d-" + ".".join(self.below_blocks))
         return "when/" + "/".join(parts) + "/end/" if parts else ""
 
 
-def rule_conditions(biomes="", connect_blocks="", neighbor_blocks=""):
+def rule_conditions(biomes="", connect_blocks="", neighbor_blocks="", below_blocks=""):
     aliases = {'snowy_plains': 'ice_plains', 'snowy_taiga': 'cold_taiga', 'old_growth_pine_taiga': 'mega_taiga', 'old_growth_spruce_taiga': 'redwood_taiga_mutated', 'old_growth_birch_forest': 'birch_forest_mutated', 'windswept_hills': 'extreme_hills', 'windswept_forest': 'extreme_hills_plus_trees', 'windswept_gravelly_hills': 'extreme_hills_mutated', 'snowy_beach': 'cold_beach', 'stony_shore': 'stone_beach', 'sparse_jungle': 'jungle_edge', 'badlands': 'mesa', 'wooded_badlands': 'mesa_plateau_stone', 'eroded_badlands': 'mesa_bryce', 'windswept_savanna': 'savanna_mutated', 'swamp': 'swampland', 'mushroom_fields': 'mushroom_island', 'dark_forest': 'roofed_forest', 'nether_wastes': 'hell', 'the_end': 'sky'}
     def names(value):
         result = []
@@ -597,8 +600,8 @@ def rule_conditions(biomes="", connect_blocks="", neighbor_blocks=""):
             result.extend(java for java, bedrock in JAVA_BLOCKS.items() if bedrock == block and java not in VANILLA_BLOCKS)
         return sorted(set(result))
     expanded = sorted(set(biome_names + [aliases[n] for n in biome_names if n in aliases]))
-    result = RuleConditions(expanded, exclude, blocks(connect_blocks), blocks(neighbor_blocks))
-    if any(len(".".join(v)) > 200 for v in (result.biomes, result.connect_blocks, result.neighbor_blocks)) or len(result.path) > 500:
+    result = RuleConditions(expanded, exclude, blocks(connect_blocks), blocks(neighbor_blocks), blocks(below_blocks))
+    if any(len(".".join(v)) > 200 for v in (result.biomes, result.connect_blocks, result.neighbor_blocks, result.below_blocks)) or len(result.path) > 500:
         raise ValueError("Condition lists are too long. Use fewer names per rule.")
     return result
 
@@ -741,7 +744,8 @@ def read_rules(pack: JavaPack, log: list[str]) -> list[Rule]:
         r = Rule(path, props, method, blocks, faces or set(FACE_NAMES), pack=pack, textures=textures)
         r.overlay = overlay
         try:
-            r.conditions = rule_conditions(props.get("biomes", ""), props.get("connectBlocks", ""), props.get("ctmforge.neighborBlocks", ""))
+            r.conditions = rule_conditions(props.get("biomes", ""), props.get("connectBlocks", ""),
+                                           props.get("ctmforge.neighborBlocks", ""), props.get("ctmforge.belowBlocks", ""))
         except ValueError as e:
             log.append(f"skip {path}: {e}")
             continue

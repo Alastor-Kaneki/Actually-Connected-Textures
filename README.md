@@ -84,7 +84,9 @@ them in game; edits are written back to that JSON file.
   `innerSeams`, `weights`, `width`/`height`. `connect` is always `block`.
   `biomes` includes/excludes biome names. `connectBlocks` chooses which blocks
   count as connected, and `ctmforge.neighborBlocks` activates a rule when any of
-  the six immediately adjacent blocks matches. Height and block-state conditions are ignored.
+  the six immediately adjacent blocks matches. `ctmforge.belowBlocks` (the creator's
+  **Only when on** field) checks only the block underneath and requires mod **1.4.0** /
+  app build **13**. Height and block-state conditions are ignored.
 * Not supported: Fusion's `overlay` layout, and overlay rules in `direct` packs.
   Conditional rules require standard (variations) mode. The first matching
   conditional rule wins; otherwise the first unconditional rule or vanilla texture is used.

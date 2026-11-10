@@ -133,6 +133,32 @@ class ConditionalPacks(unittest.TestCase):
             self.convert(["connectBlocks=unknown_block"])
         with self.assertRaises(SystemExit):
             self.convert(["biomes=desert"], direct=True)
+        with self.assertRaises(SystemExit):
+            self.convert(["ctmforge.belowBlocks=end_stone"], direct=True)
+        with self.assertRaises(SystemExit):
+            self.convert(["ctmforge.belowBlocks=unknown_block"])
+
+    def test_fire_below_families_are_alternatives_to_end_biome(self):
+        families = [sorted(b for b in ctm.VANILLA_BLOCKS if b.startswith(("end_stone", "end_brick"))),
+                    sorted(b for b in ctm.VANILLA_BLOCKS if "purpur" in b)]
+        self.assertEqual([6, 7], list(map(len, families)))
+        _, files = self.convert(["biomes=the_end"] +
+                                ["ctmforge.belowBlocks=" + " ".join(f) for f in families], block="fire", animated=True)
+        flips = json.loads(files["textures/flipbook_textures.json"])
+        for variants in self.variants(files):
+            self.assertEqual(4, len(variants))
+            self.assertIn("/when/b-sky.the_end/end/", variants[1]["path"])
+            for index, family in enumerate(families, 2):
+                expected = ctm.rule_conditions(below_blocks=" ".join(family))
+                self.assertTrue(expected.conditional)
+                self.assertIn(expected.path, variants[index]["path"])
+                self.assertNotIn("/b-", variants[index]["path"])
+                self.assertTrue(set(family).issubset(expected.below_blocks))
+            self.assertTrue(all(v["path"] + ".png" in files for v in variants))
+        supports = [f for f in flips if "/when/d-" in f["flipbook_texture"]]
+        self.assertTrue(supports)
+        self.assertTrue(all(f["atlas_tile_variant"] in (2, 3) and f["ticks_per_frame"] == 3 for f in supports))
+        self.assertFalse(any("soul_fire" in p for p in files))
 
 
 if __name__ == "__main__":

@@ -199,17 +199,18 @@ struct RuleContext {
                 status(line.c_str());
             }
         }
-        return ctm::conditionsMatch(c, biome, [&](std::string_view names) {
+        return ctm::conditionsMatch(c, biome, [&](std::string_view names, bool belowOnly) {
             std::string_view adjacent[6];
-            bool match = false;
-            for (int i = 0; i < 6; ++i) {
-                adjacent[i] = blockName(blockAt(region, pos + ctm::kFaceFrames[i].normal));
-                match |= ctm::nameInList(names, adjacent[i]);
-            }
-            if (firstConditionReport(match ? 16 : 32)) {
-                std::string line = std::string("Neighbor rule ") + (match ? "matched: " : "did not match: ");
+            int count = 0;
+            const bool match = ctm::matchNeighborBlocks(names, belowOnly, pos, [&](ctm::Int3 q) {
+                return adjacent[count++] = blockName(blockAt(region, q));
+            });
+            if (firstConditionReport(belowOnly ? (match ? 64 : 128) : (match ? 16 : 32))) {
+                std::string line = std::string(belowOnly ? "Block-below rule " : "Neighbor rule ") +
+                    (match ? "matched: " : "did not match: ");
                 line += "expected=" + std::string(names) + ", adjacent=";
-                for (auto name : adjacent) line += std::string(name.empty() ? "<unavailable>" : name) + " ";
+                for (int i = 0; i < count; ++i)
+                    line += std::string(adjacent[i].empty() ? "<unavailable>" : adjacent[i]) + " ";
                 status(line.c_str());
             }
             return match;
@@ -783,7 +784,7 @@ CTM_EXPORT bool PLMod_Load(JavaVM*, const PLModInfo* info) {
         g_statusPath = std::string(root) + "/status.txt";
     }
     if (!gameProcess()) return true;
-    status("Connected Textures 1.3.1 for Minecraft 1.26.60 / 1.26.62", true);
+    status("Connected Textures 1.4.0 for Minecraft 1.26.60 / 1.26.62", true);
     loadConfig(root);
     LOGI("loading (blocks=%d panes=%d enabled=%d)", g_cfg.blocks, g_cfg.panes, g_cfg.enabled);
     trySetup();

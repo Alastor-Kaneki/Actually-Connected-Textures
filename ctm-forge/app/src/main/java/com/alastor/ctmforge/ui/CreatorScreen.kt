@@ -152,7 +152,7 @@ private fun RuleEditor(c: CreatorController, rule: CreatorRule, number: Int, pic
                     edit { it.withMethod(CreatorMethod.entries.first { m -> m.label == label }) }
                 }
                 CreatorChoice("Faces", rule.faces, PackCreator.faceOptions, !c.busy) { value -> edit { it.copy(faces = value) } }
-                var conditionsExpanded by remember(rule.id) { mutableStateOf(rule.biomes.isNotBlank() || rule.connectBlocks.isNotBlank() || rule.neighborBlocks.isNotBlank()) }
+                var conditionsExpanded by remember(rule.id) { mutableStateOf(rule.biomes.isNotBlank() || rule.connectBlocks.isNotBlank() || rule.neighborBlocks.isNotBlank() || rule.belowBlocks.isNotBlank()) }
                 TextButton(onClick = { conditionsExpanded = !conditionsExpanded }) { Text("Biome & neighbor rules ${if (conditionsExpanded) "▾" else "▸"}") }
                 if (conditionsExpanded) {
                     OutlinedTextField(rule.biomes, { value -> edit { it.copy(biomes = value.take(400)) } }, label = { Text("Biomes (optional)") },
@@ -162,7 +162,9 @@ private fun RuleEditor(c: CreatorController, rule: CreatorRule, number: Int, pic
                     Text("Blank connects to the same block. A list replaces that default, so include the target block to keep self-connections.", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(rule.neighborBlocks, { value -> edit { it.copy(neighborBlocks = value.take(400)) } }, label = { Text("Only when touching (optional)") },
                         placeholder = { Text("sand gravel") }, enabled = !c.busy, modifier = Modifier.fillMaxWidth())
-                    Text("Touching checks the six blocks directly beside, above and below. Biome and touching conditions must both match. The first matching conditional rule wins; an unfiltered rule is the fallback. Requires Connected Textures 1.3 or newer.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(rule.belowBlocks, { value -> edit { it.copy(belowBlocks = value.take(400)) } }, label = { Text("Only when on (optional)") },
+                        placeholder = { Text("end_stone purpur_block") }, enabled = !c.busy, modifier = Modifier.fillMaxWidth())
+                    Text("Touching checks all six neighboring blocks. On checks only the block directly underneath. All filled conditions must match; use separate rules for alternatives. The first matching conditional rule wins; an unfiltered rule is the fallback. On requires Connected Textures 1.4 or newer.", style = MaterialTheme.typography.bodySmall)
                 }
                 if (rule.method == CreatorMethod.RANDOM) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { edit { it.copy(tiles = it.tiles.dropLast(1)) } }, enabled = !c.busy && rule.tiles.size > 1) { Text("−") }

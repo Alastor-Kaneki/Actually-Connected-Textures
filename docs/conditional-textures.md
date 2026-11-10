@@ -1,9 +1,10 @@
 # Conditional textures
 
-Requires CTM Forge build 12 and Connected Textures **1.3.1**. Reconvert packs made
-by older builds: build 12 embeds the normal fallback so Bedrock retains both
-texture variations when loading the pack. The installed mod does not need another
-update if it is already 1.3.1.
+Block-below rules require CTM Forge build **13** and Connected Textures **1.4.0**.
+Biome/touching rules still work with 1.3.1. Reconvert packs made before build 12:
+newer builds embed the normal fallback so Bedrock retains both texture variations
+when loading the pack. Install the updated mod as well as the new pack when using
+the block-below condition.
 
 ## Create a pack
 
@@ -15,6 +16,7 @@ Open **Create → your pack → a block rule → Biome & neighbor rules**.
 | Biomes | `!desert plains` | Use this rule outside both biomes. |
 | Connect to blocks | `glass tinted_glass` | Count either block as a connected neighbor when choosing CTM tiles. |
 | Only when touching | `sand gravel` | Enable this rule if any directly adjacent block is sand or gravel. |
+| Only when on | `end_stone purpur_block` | Enable this rule if the block immediately underneath is listed. |
 
 Use space- or comma-separated vanilla names, optionally prefixed with `minecraft:`.
 Biome names use modern underscore spelling; common Java-to-Bedrock biome aliases
@@ -28,7 +30,10 @@ block behavior, or biome generation.
 
 **Only when touching** checks the six immediate neighbors (up, down, north, south,
 east and west), including air if explicitly listed. It does not search diagonally
-or across a radius. Biome and touching conditions combine with AND. Each list uses OR.
+or across a radius. **Only when on** checks only world down, at `(x, y-1, z)`;
+blocks beside or above the target do not satisfy it. All filled condition fields
+combine with AND. Each list uses OR. Use separate rules for alternatives such as
+"in the End OR on purpur".
 
 You may add several rules for the same block faces. The first matching conditional
 rule wins, in creator/file order, regardless of where the unfiltered fallback sits.
@@ -47,13 +52,14 @@ tiles=0-4
 biomes=desert plains
 connectBlocks=glass tinted_glass
 ctmforge.neighborBlocks=sand gravel
+ctmforge.belowBlocks=end_stone purpur_block
 ```
 
 `biomes` and `connectBlocks` are read from OptiFine/MCPatcher rules.
-`ctmforge.neighborBlocks` is this project's extension. Overlay rules can also use
+`ctmforge.neighborBlocks` and `ctmforge.belowBlocks` are this project's extensions. Overlay rules can also use
 these filters; their `connectBlocks` list selects transition neighbors. Overlay
 animations still use the first frame. Fusion connection predicates, `connect=tile`,
-`connectTiles`, state filters, height filters and direction-specific activation are
+`connectTiles`, state filters, height filters and other directional conditions are
 not added by this change. **Direct mode rejects conditional/custom connection rules**
 because it cannot carry a fallback and alternative sheets.
 
@@ -66,7 +72,8 @@ textures/blocks/ctm/ctm-8x6-47/when/b-desert.plains/c-glass.tinted_glass/n-sand/
 ```
 
 `b-` includes biomes; `x-` excludes them; `c-` lists connection blocks; `n-` lists
-activation neighbors. Lists are dot-separated; `end/` terminates the condition
+activation neighbors; `d-` lists blocks allowed directly underneath. Lists are
+dot-separated; `end/` terminates the condition
 section. Animated strips carry exactly the same condition directories before
 `anim/`. The converter bounds list/path sizes. Unknown, repeated or malformed
 condition segments fail closed. Missing biome lookup skips biome-filtered rules,
@@ -85,6 +92,28 @@ block across a plains/desert boundary, add/remove the required neighbor, and che
 connections between two listed block types. Also check panes, chunk boundaries and
 animated rules. Reload the world/resource pack after editing a pack or changing a
 biome externally so Minecraft rebuilds its chunk meshes.
+
+## Purple fire on End building blocks
+
+The updated Purple End Fire pack uses separate rules for End biomes, end-stone
+support blocks, and purpur support blocks. Both fire layers retain their original
+32-frame animations. Ordinary fire outside those conditions uses the embedded
+orange fallback; the pack does not target soul fire.
+
+| Family | Supported Bedrock block IDs |
+| --- | --- |
+| End stone | `end_stone`, `end_bricks`, `end_brick_stairs`, `end_stone_brick_slab`, `end_stone_brick_double_slab`, `end_stone_brick_wall` |
+| Purpur | `purpur_block`, `purpur_pillar`, `purpur_stairs`, `purpur_slab`, `purpur_double_slab`, `deprecated_purpur_block_1`, `deprecated_purpur_block_2` |
+
+Pillar orientation and slab/stair/wall state do not affect name matching. The
+converter also expands Java aliases such as `end_stone_bricks` and
+`end_stone_brick_stairs`. The families use separate rules to stay within the path
+segment limit. This is a texture rule; placement and fire lifetime follow the game.
+
+Host tests exercise the production world-direction lookup for all 13 IDs and
+verify that matching blocks on the other five sides do not activate a below rule.
+Converter tests retain the independent End rule, normal fallbacks, and animation
+indices. Android tests edit, persist, reopen and export the new field.
 
 
 ## If the texture stays vanilla

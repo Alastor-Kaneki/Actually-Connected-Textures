@@ -29,6 +29,7 @@ data class CreatorRule(
     val biomes: String = "",
     val connectBlocks: String = "",
     val neighborBlocks: String = "",
+    val belowBlocks: String = "",
 ) {
     fun withMethod(value: CreatorMethod) = copy(method = value, tiles = List(value.tileCount) { tiles.getOrNull(it) })
 }
@@ -115,7 +116,7 @@ object PackCreator {
                 require(block in blocks) { "Choose a supported vanilla block ID." }
                 require(rule.faces in faceOptions) { "Choose valid faces." }
                 val bedrock = Bedrock.block(block)!!
-                val conditions = RuleConditions.parse(rule.biomes, rule.connectBlocks, rule.neighborBlocks)
+                val conditions = RuleConditions.parse(rule.biomes, rule.connectBlocks, rule.neighborBlocks, rule.belowBlocks)
                 faces(rule.faces).forEach { f ->
                     require(occupied.add(Triple(bedrock, f, conditions.predicateKey))) { "Another rule already covers $f on $bedrock. Choose different faces or biome/neighbor conditions." }
                 }
@@ -170,6 +171,7 @@ object PackCreator {
                     if (conditions.biomes.isNotEmpty()) append("biomes=${tokens(rule.biomes)}\n")
                     if (conditions.connectBlocks.isNotEmpty()) append("connectBlocks=${tokens(rule.connectBlocks)}\n")
                     if (conditions.neighborBlocks.isNotEmpty()) append("ctmforge.neighborBlocks=${tokens(rule.neighborBlocks)}\n")
+                    if (conditions.belowBlocks.isNotEmpty()) append("ctmforge.belowBlocks=${tokens(rule.belowBlocks)}\n")
                 }.toByteArray()
                 if (ri == 0) files["pack.png"] = Png.encode(images.first().firstFrame(), 6)
             } catch (e: IllegalArgumentException) {

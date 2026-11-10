@@ -4,10 +4,10 @@
 
 namespace ctm {
 struct Conditions {
-    std::string_view biomes, connections, neighbors;
+    std::string_view biomes, connections, neighbors, below;
     bool excludeBiomes = false;
     bool valid = true;
-    bool conditional() const { return !biomes.empty() || !neighbors.empty(); }
+    bool conditional() const { return !biomes.empty() || !neighbors.empty() || !below.empty(); }
 };
 
 inline std::string_view bareName(std::string_view name) {
@@ -48,14 +48,14 @@ inline bool validNameList(std::string_view list) {
 }
 
 // Optional suffix after the sheet-spec directory:
-// when/b-desert.plains/c-glass.tinted_glass/n-sand/end/<image>
+// when/b-desert.plains/c-glass.tinted_glass/n-sand/d-end_stone/end/<image>
 // x- excludes the listed biomes. Malformed/unknown conditions fail closed.
 inline Conditions parseConditions(std::string_view rest) {
     Conditions out;
     if (rest.substr(0, 5) != "when/") return out;
     rest.remove_prefix(5);
     out.valid = false;
-    for (int part = 0; part < 4; ++part) {
+    for (int part = 0; part < 5; ++part) {
         const auto slash = rest.find('/');
         if (slash == std::string_view::npos) return out;
         const auto segment = rest.substr(0, slash);
@@ -72,6 +72,7 @@ inline Conditions parseConditions(std::string_view rest) {
             out.biomes = names; out.excludeBiomes = segment[0] == 'x'; break;
         case 'c': if (!out.connections.empty()) return out; out.connections = names; break;
         case 'n': if (!out.neighbors.empty()) return out; out.neighbors = names; break;
+        case 'd': if (!out.below.empty()) return out; out.below = names; break;
         default: return out;
         }
     }
@@ -85,6 +86,7 @@ bool conditionsMatch(const Conditions& c, std::string_view biome, NeighborMatch&
         // Unknown biome must also fail exclusions, never accidentally become a global rule.
         if (biome.empty() || nameInList(c.biomes, biome) == c.excludeBiomes) return false;
     }
-    return c.neighbors.empty() || neighborMatch(c.neighbors);
+    return (c.neighbors.empty() || neighborMatch(c.neighbors, false)) &&
+           (c.below.empty() || neighborMatch(c.below, true));
 }
 } // namespace ctm
