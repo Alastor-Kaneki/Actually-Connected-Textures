@@ -349,7 +349,8 @@ class GoldenTest {
         val tex = json(r.files, "blocks.json").jsonObject["oak_log"]!!.jsonObject["textures"]!!.jsonObject
         assertEquals("ctm_logs_oak_log", tex["up"]!!.jsonPrimitive.content)
         assertEquals("ctm_logs_oak_log", tex["down"]!!.jsonPrimitive.content)
-        assertEquals("oak_log_side", tex["side"]!!.jsonPrimitive.content)
+        assertTrue("side" !in tex)
+        for (face in Bedrock.SIDES) assertEquals("oak_log_side", tex[face]!!.jsonPrimitive.content)
     }
 
     @Test
