@@ -42,7 +42,8 @@ class CreatorUiTest {
         assertEquals(vm.creator.project, restored)
         File("build/screens").mkdirs()
         compose.onRoot().captureRoboImage("build/screens/creator-editor.png")
-        compose.onNodeWithText("Build .mcpack").performScrollTo().performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Build .mcpack"))
+        compose.onNodeWithText("Build .mcpack").performClick()
         compose.waitUntil(20000) { !vm.creator.busy }
         assertNull(vm.creator.error)
         assertTrue(vm.routes.lastOrNull() is AppViewModel.Route.Pack)
