@@ -25,9 +25,12 @@ static int failures = 0;
         }                                                                \
     } while (0)
 
+#include "texture_selection_test.hpp"
+
 static bool parse(const char* s, SheetSpec& out) { return parseSheetPath(s, std::strlen(s), out); }
 
 static void unitTests() {
+    textureSelectionTests();
     SheetSpec s;
     CHECK(parse("textures/blocks/ctm/ctm-8x6-47/clean_glass", s));
     CHECK(s.method == Method::Ctm && s.cols == 8 && s.rows == 6 && s.count == 47 && !s.innerSeams);

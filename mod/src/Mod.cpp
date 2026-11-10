@@ -25,6 +25,7 @@
 
 #include "CtmLogic.hpp"
 #include "Game.hpp"
+#include "TextureSelection.hpp"
 #include "pl/ModMenu.hpp"
 #include "pl/memory/Hook.hpp"
 #include "pl/memory/Signature.hpp"
@@ -70,6 +71,11 @@ uintptr_t g_addr[Sig_Count] = {};
 
 FaceFn g_faceOrig[6] = {};
 GetTextureFn g_getTextureOrig = nullptr;
+GetTextureNoPosFn g_getTextureNoPosOrig = nullptr;
+GetTextureForBlockFn g_getTextureForBlockOrig = nullptr;
+BlockVariantFn g_blockVariant = nullptr;
+TessellateWorldFn g_tessellateWorldOrig = nullptr;
+TessellateCubeFn g_tessellateCubeOrig = nullptr;
 PaneFn g_paneOrig = nullptr;
 UseNewFn g_useNewOrig = nullptr;
 BuildFn g_buildOrig = nullptr;
@@ -110,6 +116,7 @@ struct PaneState {
 
 struct ThreadState {
     void* blockTessellator = nullptr;
+    ctm::WorldContext world;
     int terrainDepth = 0;  // > 0 while RenderChunkBuilder::build runs on this thread
     PaneState pane;
     struct OverlayState {
@@ -152,6 +159,13 @@ bool connects(const ctm::SheetSpec& spec, const void* other, const void* legacy)
         : ctm::nameInList(spec.conditions.connections, blockName(other));
 }
 
+// Bounded diagnostics: one line for each outcome, never one write per block.
+std::atomic<unsigned> g_conditionReports{0};
+bool firstConditionReport(unsigned bit) {
+    return !(g_conditionReports.load(std::memory_order_relaxed) & bit) &&
+        !(g_conditionReports.fetch_or(bit, std::memory_order_relaxed) & bit);
+}
+
 struct RuleContext {
     void* region;
     ctm::Int3 pos;
@@ -159,7 +173,14 @@ struct RuleContext {
     std::string_view biome;
     bool matches(const ctm::SheetSpec& spec) {
         const auto& c = spec.conditions;
-        if (c.conditional() && !region) return false;
+        if (!c.valid) {
+            if (firstConditionReport(1)) status("Conditional texture skipped: invalid rule path.");
+            return false;
+        }
+        if (c.conditional() && !region) {
+            if (firstConditionReport(2)) status("Conditional texture skipped: no world position/BlockSource in this render call.");
+            return false;
+        }
         if (!c.biomes.empty() && !loadedBiome) {
             loadedBiome = true;
             const int p[3] = {pos.x, pos.y, pos.z};
@@ -169,10 +190,29 @@ struct RuleContext {
                 if (name.size() <= 128) biome = name;
             }
         }
+        if (!c.biomes.empty()) {
+            const bool match = !biome.empty() && ctm::nameInList(c.biomes, biome) != c.excludeBiomes;
+            if (firstConditionReport(match ? 4 : 8)) {
+                const std::string line = std::string("Biome rule ") + (match ? "matched: " : "did not match: ") +
+                    "actual=" + std::string(biome.empty() ? "<unavailable>" : biome) +
+                    ", expected=" + (c.excludeBiomes ? "!" : "") + std::string(c.biomes);
+                status(line.c_str());
+            }
+        }
         return ctm::conditionsMatch(c, biome, [&](std::string_view names) {
-            for (const auto& frame : ctm::kFaceFrames)
-                if (ctm::nameInList(names, blockName(blockAt(region, pos + frame.normal)))) return true;
-            return false;
+            std::string_view adjacent[6];
+            bool match = false;
+            for (int i = 0; i < 6; ++i) {
+                adjacent[i] = blockName(blockAt(region, pos + ctm::kFaceFrames[i].normal));
+                match |= ctm::nameInList(names, adjacent[i]);
+            }
+            if (firstConditionReport(match ? 16 : 32)) {
+                std::string line = std::string("Neighbor rule ") + (match ? "matched: " : "did not match: ");
+                line += "expected=" + std::string(names) + ", adjacent=";
+                for (auto name : adjacent) line += std::string(name.empty() ? "<unavailable>" : name) + " ";
+                status(line.c_str());
+            }
+            return match;
         });
     }
 };
@@ -205,55 +245,8 @@ const void* findSheetVariation(const void* graphics, size_t face, uint32_t varia
     return nullptr;
 }
 
-// All sheets of one face/variant: the first non-overlay sheet (the face's CTM
-// tile source) plus every overlay sheet, in pack order.
-struct SheetSet {
-    const void* normal = nullptr;
-    const void* base = nullptr;
-    bool conditionalNormal = false;
-    bool hasSheet = false;
-    int overlayCount = 0;
-    const void* overlays[4] = {};
-    ctm::SheetSpec specs[4] = {};
-};
-
-SheetSet findSheets(const void* graphics, size_t face, uint32_t variant, RuleContext& context) {
-    SheetSet out;
-    const char* fb = at<const char*>(graphics, off::BG_Faces);
-    const char* fe = at<const char*>(graphics, off::BG_Faces + 8);
-    if (!fb || fe <= fb) return out;
-    const size_t nf = static_cast<size_t>(fe - fb) / off::BG_FaceItemSize;
-    if (!nf) return out;
-    const char* item = fb + (face < nf ? face : nf - 1) * off::BG_FaceItemSize;
-    const char* vb = at<const char*>(item, off::FaceItem_Variants);
-    const char* ve = at<const char*>(item, off::FaceItem_Variants + 8);
-    if (!vb || ve <= vb) return out;
-    const size_t nv = static_cast<size_t>(ve - vb) / 24;
-    if (!nv) return out;
-    const char* vec = vb + (variant < nv ? variant : 0) * 24;
-    const char* ub = at<const char*>(vec, 0);
-    const char* ue = at<const char*>(vec, 8);
-    if (!ub || ue <= ub) return out;
-    const size_t n = static_cast<size_t>(ue - ub) / off::UV_Size;
-    for (size_t i = 0; i < n && i < 256; ++i) {
-        const char* uv = ub + i * off::UV_Size;
-        ctm::SheetSpec spec;
-        if (!sheetSpecOf(uv, spec)) { if (!out.base) out.base = uv; continue; }
-        out.hasSheet = true;
-        if (!context.matches(spec)) continue;
-        if (spec.overlay) {
-            if (out.overlayCount < 4) {
-                out.overlays[out.overlayCount] = uv;
-                out.specs[out.overlayCount] = spec;
-                ++out.overlayCount;
-            }
-        } else if (!out.normal || (!out.conditionalNormal && spec.conditions.conditional())) {
-            out.normal = uv;
-            out.conditionalNormal = spec.conditions.conditional();
-        }
-    }
-    return out;
-}
+using ctm::findSheets;
+using ctm::SheetSet;
 
 bool graphicsHasSheet(const void* graphics) {
     const char* fb = at<const char*>(graphics, off::BG_Faces);
@@ -413,17 +406,19 @@ void faceDetour(void* bt, void* tess, const void* block, const float* p, const v
     }
 }
 
-const void* getTextureDetour(void* graphics, const int* pos, size_t face, uintptr_t variant) {
+const void* selectTexture(void* graphics, const int* pos, size_t face, uint32_t variant, const void* res) {
     ThreadState& ts = t_state;
     ts.overlay.active = false;
     ts.overlay.count = 0;
-    const void* res = g_getTextureOrig(graphics, pos, face, static_cast<uint32_t>(variant));
     if (!graphics || !g_enabled.load(std::memory_order_relaxed)) return res;
     PaneState& ps = ts.pane;
     ctm::SheetSpec spec;
     const void* sheet = nullptr;
     if (ts.terrainDepth > 0 && (ps.active ? g_cfg.panes : g_cfg.blocks)) {
-        void* region = ps.active ? ps.region : ts.blockTessellator ? at<void*>(ts.blockTessellator, off::BT_Region) : nullptr;
+        // The live per-block tessellator wins over the chunk builder's instance.
+        void* bt = ts.world.tessellator ? ts.world.tessellator : ts.blockTessellator;
+        void* region = ps.active ? ps.region : bt ? at<void*>(bt, off::BT_Region) : nullptr;
+        if (!pos) pos = ts.world.position;
         RuleContext context{pos ? region : nullptr, pos ? ctm::Int3{pos[0], pos[1], pos[2]} : ctm::Int3{}};
         const SheetSet set = findSheets(graphics, face, static_cast<uint32_t>(variant), context);
         sheet = set.normal;
@@ -462,6 +457,31 @@ const void* getTextureDetour(void* graphics, const int* pos, size_t face, uintpt
         ps.rect = rectOf(sheet);
     }
     return sheet;
+}
+
+
+const void* getTextureDetour(void* graphics, const int* pos, size_t face, uint32_t variant) {
+    return selectTexture(graphics, pos, face, variant, g_getTextureOrig(graphics, pos, face, variant));
+}
+
+const void* getTextureNoPosDetour(void* graphics, size_t face, uint32_t variant) {
+    return selectTexture(graphics, nullptr, face, variant, g_getTextureNoPosOrig(graphics, face, variant));
+}
+
+const void* getTextureForBlockDetour(void* graphics, size_t face, const void* block) {
+    const void* res = g_getTextureForBlockOrig(graphics, face, block);
+    if (!g_enabled.load(std::memory_order_relaxed) || t_state.terrainDepth <= 0) return res;
+    return selectTexture(graphics, nullptr, face, g_blockVariant(block), res);
+}
+
+bool tessellateWorldDetour(void* bt, void* tess, const void* block, const int* pos, bool cache) {
+    ctm::WorldScope scope(t_state.world, bt, pos);
+    return g_tessellateWorldOrig(bt, tess, block, pos, cache);
+}
+
+bool tessellateCubeDetour(void* bt, void* tess, const void* block, const int* pos, uintptr_t faces, const void* air) {
+    ctm::WorldScope scope(t_state.world, bt, pos);
+    return g_tessellateCubeOrig(bt, tess, block, pos, faces, air);
 }
 
 void emitQuad(PaneState& ps) {
@@ -682,6 +702,7 @@ bool setup() {
     }
     g_getBlock = reinterpret_cast<GetBlockFn>(g_addr[Sig_GetBlock]);
     g_getBiome = reinterpret_cast<GetBiomeFn>(g_addr[Sig_GetBiome]);
+    g_blockVariant = reinterpret_cast<BlockVariantFn>(g_addr[Sig_BlockVariant]);
     status(g_getBiome ? "Biome-dependent textures available." : "Biome lookup unavailable: biome rules will be skipped.");
     g_uvCopy = reinterpret_cast<UvCopyFn>(g_addr[Sig_UvCopy]);
     g_uvDtor = reinterpret_cast<UvDtorFn>(g_addr[Sig_UvDtor]);
@@ -691,6 +712,10 @@ bool setup() {
     all &= install(Sig_RenderChunkBuild, reinterpret_cast<void*>(&buildDetour), &g_buildOrig);
     all &= install(Sig_UseNewTessellation, reinterpret_cast<void*>(&useNewDetour), &g_useNewOrig);
     all &= install(Sig_GetTexture, reinterpret_cast<void*>(&getTextureDetour), &g_getTextureOrig);
+    all &= install(Sig_GetTextureNoPos, reinterpret_cast<void*>(&getTextureNoPosDetour), &g_getTextureNoPosOrig);
+    all &= install(Sig_GetTextureForBlock, reinterpret_cast<void*>(&getTextureForBlockDetour), &g_getTextureForBlockOrig);
+    all &= install(Sig_TessellateWorld, reinterpret_cast<void*>(&tessellateWorldDetour), &g_tessellateWorldOrig);
+    all &= install(Sig_TessellateCube, reinterpret_cast<void*>(&tessellateCubeDetour), &g_tessellateCubeOrig);
     all &= install(Sig_FaceDown, reinterpret_cast<void*>(&faceDetour<0>), &g_faceOrig[0]);
     all &= install(Sig_FaceUp, reinterpret_cast<void*>(&faceDetour<1>), &g_faceOrig[1]);
     all &= install(Sig_FaceNorth, reinterpret_cast<void*>(&faceDetour<2>), &g_faceOrig[2]);
@@ -758,7 +783,7 @@ CTM_EXPORT bool PLMod_Load(JavaVM*, const PLModInfo* info) {
         g_statusPath = std::string(root) + "/status.txt";
     }
     if (!gameProcess()) return true;
-    status("Connected Textures 1.3.0 for Minecraft 1.26.60 / 1.26.62", true);
+    status("Connected Textures 1.3.1 for Minecraft 1.26.60 / 1.26.62", true);
     loadConfig(root);
     LOGI("loading (blocks=%d panes=%d enabled=%d)", g_cfg.blocks, g_cfg.panes, g_cfg.enabled);
     trySetup();

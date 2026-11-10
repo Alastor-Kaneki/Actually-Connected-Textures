@@ -1434,6 +1434,7 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
     terrain: dict[str, dict] = {}
     blocks_json: dict[str, dict] = {"format_version": "1.21.120"}
     flipbooks: list[dict] = []
+    base_animation_aliases: list[tuple] = []
     array_aliases: dict[tuple, str] = {}
     rule_count: dict[str, int] = {}
     summary = {"blocks": {}, "methods": {}, "animated": []}
@@ -1546,6 +1547,13 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
         if not isinstance(tex, dict):
             log.append(f"skip: '{block}' has no textures in blocks.json")
             continue
+        # Expand the generic side key before replacing individual faces. Leaving both
+        # forms lets the game's texture loader re-apply the stale vanilla side alias.
+        tex = dict(tex)
+        side = tex.pop("side", None)
+        if side is not None:
+            for face in ("north", "south", "west", "east"):
+                tex.setdefault(face, side)
         if "carried_textures" not in entry:
             entry["carried_textures"] = json.loads(json.dumps(VANILLA_BLOCKS[block].get("textures")))
         if any(e["layout"].overlay for entries in faces.values() for e in entries):
@@ -1586,6 +1594,8 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
                 array_aliases[(block, vanilla_alias)] = alias
             else:
                 terrain[alias] = {"textures": value}
+            if not direct and normal is None and vanilla_alias:
+                base_animation_aliases.append((vanilla_alias, index or 0, alias, index if array else None))
             for pos, e in enumerate(entries):
                 if not e["animated"]:
                     continue
@@ -1673,6 +1683,21 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
         "resource_pack_name": slug, "texture_name": "atlas.terrain", "padding": 8, "num_mip_levels": 4,
         "texture_data": terrain}, indent=1).encode()
     files["blocks.json"] = json.dumps(blocks_json, indent=1).encode()
+    # Each new terrain alias owns its own atlas slot. Vanilla's flipbook still
+    # targets the old alias, so mirror it onto variation zero of the new one.
+    # Prefer a converted plain animation when the pack supplies a custom base.
+    base_flips = []
+    for old_alias, old_index, new_alias, new_index in base_animation_aliases:
+        source = next((f for f in flipbooks if f["atlas_tile"] == old_alias and f.get("atlas_index", 0) == old_index), None)
+        source = source or VANILLA_FLIPBOOKS.get((old_alias, old_index))
+        if source:
+            f = dict(source, atlas_tile=new_alias, atlas_tile_variant=0)
+            f.pop("atlas_index", None)
+            if new_index is not None:
+                f["atlas_index"] = new_index
+            if f not in base_flips:
+                base_flips.append(f)
+    flipbooks = base_flips + flipbooks
     if flipbooks:
         files["textures/flipbook_textures.json"] = json.dumps(flipbooks, indent=1).encode()
     desc = plain_description(meta.get("description", ""))

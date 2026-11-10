@@ -55,6 +55,44 @@ class ConditionsTest {
         assertTrue(result.sheets.none { "snow_layer" in it.sheetPath })
     }
 
+    @Test fun endFireKeepsBothLayersFrameOrderAndAnimatedVanillaFallback() {
+        val dir = "assets/minecraft/optifine/ctm/end"
+        val strip = Png.encode(Img(16, 512, IntArray(16 * 512) { 0xff0000c8.toInt() or ((it / 256) shl 16) }))
+        val files = LinkedHashMap<String, ByteArray>()
+        for (layer in 0..1) {
+            val name = "fire_$layer"
+            files["$dir/$name.png"] = strip
+            files["$dir/$name.properties"] = ("matchTiles=$name\nmethod=fixed\ntiles=$name\n" +
+                "biomes=the_end end_highlands end_midlands end_barrens small_end_islands").toByteArray()
+            val frames = ((16..31) + (0..15)).joinToString(",")
+            files["$dir/$name.png.mcmeta"] = (if (layer == 0)
+                "{\"animation\":{\"frames\":[$frames]}}" else "{\"animation\":{}}").toByteArray()
+        }
+        val result = Converter.convert(JavaPack.fromEntries(files), ConvertOptions(name = "End Fire", slug = "end_fire"))
+        fun json(path: String) = Json.parseToJsonElement(result.files.getValue(path).decodeToString())
+        val faces = json("blocks.json").jsonObject.getValue("fire").jsonObject.getValue("textures").jsonObject
+        assertEquals(Bedrock.FACES.toSet(), faces.keys)
+        assertNotEquals(faces["up"], faces["down"])
+        assertEquals(faces["up"], faces["north"])
+        val terrain = json("textures/terrain_texture.json").jsonObject.getValue("texture_data").jsonObject
+        val flips = json("textures/flipbook_textures.json").jsonArray.map { it.jsonObject }
+        assertEquals(4, flips.size)
+        for ((face, layer) in listOf("up" to 0, "down" to 1)) {
+            val alias = faces.getValue(face).jsonPrimitive.content
+            val variants = terrain.getValue(alias).jsonObject.getValue("textures").jsonObject.getValue("variations").jsonArray
+            assertEquals("textures/blocks/fire_$layer", variants[0].jsonObject.getValue("path").jsonPrimitive.content)
+            assertTrue("the_end/end/" in variants[1].jsonObject.getValue("path").jsonPrimitive.content)
+            val base = flips.single { it["atlas_tile"]?.jsonPrimitive?.content == alias && it["atlas_tile_variant"]?.jsonPrimitive?.int == 0 }
+            assertEquals("textures/blocks/fire_$layer", base.getValue("flipbook_texture").jsonPrimitive.content)
+            val sheet = flips.single { it["atlas_tile"]?.jsonPrimitive?.content == alias && it["atlas_tile_variant"]?.jsonPrimitive?.int == 1 }
+            val image = Png.decode(result.files.getValue(sheet.getValue("flipbook_texture").jsonPrimitive.content + ".png"))
+            assertEquals(16, image.width)
+            assertEquals(512, image.height)
+            assertEquals(if (layer == 0) 16 else 0, (image[0, 0] ushr 16) and 255)
+            assertEquals((0..31).toList(), sheet.getValue("frames").jsonArray.map { it.jsonPrimitive.int })
+        }
+    }
+
     @Test fun validatesNamesAndCanonicalizesBlockAndBiomeAliases() {
         val c = RuleConditions.parse("minecraft:snowy_plains, desert", "grass_block minecraft:glass", "sand")
         assertEquals(listOf("desert", "ice_plains", "snowy_plains"), c.biomes)

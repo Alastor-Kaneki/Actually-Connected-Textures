@@ -36,6 +36,11 @@ enum Sig : int {
     Sig_VertexUV,
     Sig_GraphicsForBlock,
     Sig_GetBiome,
+    Sig_GetTextureNoPos,
+    Sig_GetTextureForBlock,
+    Sig_BlockVariant,
+    Sig_TessellateWorld,
+    Sig_TessellateCube,
     Sig_Count
 };
 
@@ -58,6 +63,12 @@ inline constexpr SigDef kSigs[Sig_Count] = {
     // whenever the game is relinked (0x238 in 1.26.60, 0x878 in 1.26.62), so only the opcode is matched.
     {"GraphicsForBlock (Connected Textures)", "FD 7B BE A9 F3 0B 00 F9 FD 03 00 91 F3 03 00 AA ? ? ? ? ? ? ? ? F3 0B 40 F9 FD 7B C2 A8 C0 03 5F D6 E0 03 13 AA ? ? ? ? ? ? ? ? E0 03 13 AA ? ? ? ? ? ? ? ? 09 ? 4? F9 ? ? ? ? 20 01 67 9E 08 00 40 B9 00 58 20 0E", true},
     {"BlockSourceGetBiome", "? ? ? D1 ? ? ? A9 ? ? ? F9 ? ? ? A9 ? ? ? 91 55 D0 3B D5 F3 03 00 AA F4 03 01 AA ? ? ? F9 ? ? ? F9 ? ? ? F9 ? ? ? F9 00 01 3F D6", false},
+    // Additional classic render paths verified in both supplied Android binaries (BINDINGS.md).
+    {"BlockGraphicsGetTextureNoPos", "FF 03 01 D1 FD 7B 02 A9 F3 1B 00 F9 FD 83 00 91 53 D0 3B D5 68 16 40 F9 A8 83 1F F8 08 A4 45 A9 29 01 08 EB 20 03 00 54 6A 74 91 D2 29 FD 44 93 0B 00 80 92 CA 45 B7 F2 0A 5D D4 F2 6A D1 E5 F2 29 2D 0A 9B 0A 16 80 52 3F 01 01 EB 29 31 81 9A 28 21 0A 9B 6A 55 95 52 4A 55 B5 72 08 25 45 A9 29 01 08 CB 29 FD 43 D3 29 7D 0A 1B 3F 01 00 71 4D 01 00 54 3F 01 02 6B 0A 03 80 52 49 80 9F 1A 28 21 AA 9B", true},
+    {"BlockGraphicsGetTextureForBlock", "FF 43 01 D1 FD 7B 02 A9 F5 1B 00 F9 F4 4F 04 A9 FD 83 00 91 55 D0 3B D5 F3 03 00 AA E0 03 02 AA A8 16 40 F9 F4 03 01 AA A8 83 1F F8", true},
+    {"BlockGetVariant", "E1 03 00 AA 00 34 40 F9 08 00 40 F9 02 A1 41 F9 40 00 1F D6", true},
+    {"BlockTessellatorTessellateInWorld", "FF 83 06 D1 FD 7B 14 A9 FC 6F 15 A9 FA 67 16 A9 F8 5F 17 A9 F6 57 18 A9 F4 4F 19 A9 FD 03 05 91 5A D0 3B D5 F7 03 04 2A F4 03 03 AA", true},
+    {"BlockTessellatorTessellateBlockInWorld", "? ? ? D1 ? ? ? A9 ? ? ? A9 ? ? ? A9 ? ? ? A9 ? ? ? A9 ? ? ? A9 ? ? ? 91 53 D0 3B D5 F9 03 05 AA", true},
 };
 
 }  // namespace game
@@ -95,6 +106,11 @@ inline constexpr size_t FaceItem_Variants = 0x50;
 // ------------------------------------------------------------------ function types
 using FaceFn = void (*)(void* bt, void* tess, const void* block, const float* pos, const void* tex);
 using GetTextureFn = const void* (*)(void* graphics, const int* pos, size_t face, uint32_t variant);
+using GetTextureNoPosFn = const void* (*)(void* graphics, size_t face, uint32_t variant);
+using GetTextureForBlockFn = const void* (*)(void* graphics, size_t face, const void* block);
+using BlockVariantFn = uint32_t (*)(const void* block);
+using TessellateWorldFn = bool (*)(void* bt, void* tess, const void* block, const int* pos, bool cache);
+using TessellateCubeFn = bool (*)(void* bt, void* tess, const void* block, const int* pos, uintptr_t faces, const void* air);
 using PaneFn = bool (*)(void* bt, void* tess, const void* block, const int* pos, int32_t arg);
 using UseNewFn = bool (*)(const void* block, bool onlyNew);
 using BuildFn = void (*)(void* builder, void* geometry, bool transparentLeaves, int32_t lighting, bool forExport,

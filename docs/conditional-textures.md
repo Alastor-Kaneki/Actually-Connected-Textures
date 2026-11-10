@@ -1,6 +1,6 @@
 # Conditional textures
 
-Requires CTM Forge build 10 and Connected Textures **1.3.0**. Existing converted
+Requires CTM Forge build 11 and Connected Textures **1.3.1**. Existing converted
 packs keep their previous behavior. Reconvert Java packs to retain biome and
 connection conditions that older converters discarded.
 
@@ -82,3 +82,21 @@ block across a plains/desert boundary, add/remove the required neighbor, and che
 connections between two listed block types. Also check panes, chunk boundaries and
 animated rules. Reload the world/resource pack after editing a pack or changing a
 biome externally so Minecraft rebuilds its chunk meshes.
+
+
+## If the texture stays vanilla
+
+Update **both** CTM Forge and the installed Connected Textures Levi mod. Updating
+only the app does not replace the installed mod. Reconvert/import the pack, enable
+it in the world's resources, and fully close/reopen the world so its chunks rebuild.
+The mod's `status.txt` starts with its version and reports whether biome lookup is
+available. It records the first matching and nonmatching biome/neighbor condition,
+including the actual names read from the game. A missing context or malformed path
+is reported separately. These lines are bounded to avoid logging every block.
+
+The inspected `purple-end-fire.zip` contains two animated `fixed` rules for
+`fire_0` and `fire_1`, limited to the End biomes; it contains no neighbor rules.
+Both 32-frame timelines are retained, including fire_0's frame-16 start. Build 11
+also registers vanilla fire animations on each fallback alias, and expands the
+old `side` key before replacing faces. Test the converted pack with fire in the
+End and the Overworld: only the End should use the purple animation.

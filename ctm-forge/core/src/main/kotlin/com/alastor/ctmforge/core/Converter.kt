@@ -647,6 +647,8 @@ object Converter {
             blocksJson["format_version"] = JsonPrimitive("1.21.120")
             val entries = HashMap<String, LinkedHashMap<String, JsonElement>>()
             val flipbooks = ArrayList<JsonElement>()
+            data class BaseAnimation(val oldAlias: String, val oldIndex: Int, val alias: String, val index: Int?)
+            val baseAnimations = ArrayList<BaseAnimation>()
             val arrayAliases = HashMap<Pair<String, String?>, String>()
             val ruleCount = HashMap<String, Int>()
             val blocks = LinkedHashMap<String, String>()
@@ -768,6 +770,9 @@ object Converter {
                         continue
                     }
                 }
+                // Remove generic side before assigning individual faces; otherwise it
+                // can restore the vanilla alias when Bedrock loads blocks.json.
+                tex.remove("side")?.let { side -> Bedrock.SIDES.forEach { tex.putIfAbsent(it, side) } }
                 if ("carried_textures" !in entry) entry["carried_textures"] = vanilla["textures"] ?: JsonNull
                 if (faces.values.any { lst -> lst.any { it.layout.overlay } }) {
                     // Overlay quads are cutout, not opaque: without alpha testing their
@@ -817,6 +822,8 @@ object Converter {
                     } else {
                         terrain[alias] = JsonObject(mapOf("textures" to value))
                     }
+                    if (!opt.direct && normal == null && vanillaAlias != null)
+                        baseAnimations += BaseAnimation(vanillaAlias, index ?: 0, alias, if (array) index else null)
                     for ((pos, e) in entries2.withIndex()) {
                         sheets += BlockSheet(block, e.spec, e.sheetPath, FACE_NAMES.filter { it in groupFaces })
                         if (!e.animated) continue
@@ -913,7 +920,22 @@ object Converter {
                 "padding" to JsonPrimitive(8), "num_mip_levels" to JsonPrimitive(4), "texture_data" to JsonObject(terrain),
             )))
             files["blocks.json"] = pretty(JsonObject(blocksJson))
-            if (flipbooks.isNotEmpty()) files["textures/flipbook_textures.json"] = pretty(JsonArray(flipbooks))
+            // New aliases need a base-variation flipbook too. Prefer a plain base
+            // animation supplied by this pack over the vanilla animation entry.
+            val baseFlips = baseAnimations.mapNotNull { base ->
+                val source = flipbooks.filterIsInstance<JsonObject>().firstOrNull {
+                    it["atlas_tile"].str() == base.oldAlias &&
+                        (asInt(it["atlas_index"]) ?: 0) == base.oldIndex
+                } ?: Bedrock.vanillaFlipbooks[base.oldAlias to base.oldIndex] ?: return@mapNotNull null
+                val f = LinkedHashMap(source)
+                f["atlas_tile"] = JsonPrimitive(base.alias)
+                f["atlas_tile_variant"] = JsonPrimitive(0)
+                f.remove("atlas_index")
+                base.index?.let { f["atlas_index"] = JsonPrimitive(it) }
+                JsonObject(f)
+            }.distinct()
+            if (flipbooks.isNotEmpty() || baseFlips.isNotEmpty())
+                files["textures/flipbook_textures.json"] = pretty(JsonArray(baseFlips + flipbooks))
             val desc = plainDescription(meta?.get("description"))
             val ns = Uuid5.of(Uuid5.NAMESPACE_URL, "https://example.invalid/ctm-converter/$slug" + if (opt.direct) "/direct" else "")
             val headerUuid = Uuid5.of(ns, "header").toString()
