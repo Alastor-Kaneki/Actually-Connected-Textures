@@ -53,8 +53,8 @@ static void unitTests() {
     CHECK(nameInList(s.conditions.connections, "minecraft:tinted_glass"));
     CHECK(!nameInList(s.conditions.connections, "stained_glass"));
     CHECK(nameInList("sea_lantern.sealantern", "minecraft:seaLantern"));
-    auto touchingSand = [](std::string_view list) { return nameInList(list, "minecraft:sand"); };
-    auto touchingStone = [](std::string_view list) { return nameInList(list, "stone"); };
+    auto touchingSand = [](std::string_view list, bool) { return nameInList(list, "minecraft:sand"); };
+    auto touchingStone = [](std::string_view list, bool) { return nameInList(list, "stone"); };
     CHECK(conditionsMatch(s.conditions, "minecraft:desert", touchingSand));
     CHECK(!conditionsMatch(s.conditions, "forest", touchingSand));
     CHECK(!conditionsMatch(s.conditions, "desert", touchingStone));
@@ -64,11 +64,47 @@ static void unitTests() {
     CHECK(!conditionsMatch(s.conditions, "", touchingStone));
     for (const char* bad : {"when/b-desert/b-plains/end/x", "when/b-desert/x-plains/end/x",
              "when/b-desert/q-stone/end/x", "when/b-/end/x", "when/b-desert..plains/end/x",
-             "when/b-desert/x", "when/n-../end/x", "when/end/x"}) {
+             "when/b-desert/x", "when/n-../end/x", "when/end/x", "when/d-/end/x",
+             "when/d-end_stone/d-purpur_block/end/x", "when/d-../end/x"}) {
         CHECK(!parseConditions(bad).valid);
         CHECK(!conditionsMatch(parseConditions(bad), "desert", touchingSand));
     }
     CHECK(parse("textures/blocks/ctm/ctm-8x6-47/x", s) && !s.conditions.conditional());
+
+    // Full condition grammar, and the same world-space neighbor traversal the
+    // Android renderer calls. A matching block beside/above fire is insufficient.
+    const auto below = parseConditions("when/d-end_stone.purpur_block/end/anim/fire");
+    CHECK(below.valid && below.conditional());
+    CHECK(!conditionsMatch(below, "", touchingStone));
+    CHECK(parseConditions("when/b-the_end/c-glass/n-sand/d-end_stone/end/fire").valid);
+    const char* family[] = {"end_stone", "end_bricks", "end_brick_stairs", "end_stone_brick_slab",
+        "end_stone_brick_double_slab", "end_stone_brick_wall", "purpur_block", "purpur_pillar",
+        "purpur_stairs", "purpur_slab", "purpur_double_slab", "deprecated_purpur_block_1", "deprecated_purpur_block_2"};
+    const Int3 firePos{17, 64, -30};
+    for (const auto* name : family) {
+        // Keep the path alive: parsed conditions are non-owning views.
+        const std::string path = std::string("when/d-") + name + "/end/fire";
+        const auto condition = parseConditions(path);
+        for (int face = 0; face < 6; ++face) {
+            int reads = 0;
+            auto match = [&](std::string_view names, bool belowOnly) {
+                return matchNeighborBlocks(names, belowOnly, firePos, [&](Int3 q) -> std::string_view {
+                    ++reads;
+                    return q == firePos + kFaceFrames[face].normal ? name : "stone";
+                });
+            };
+            CHECK(conditionsMatch(condition, "plains", match) == (face == 0));
+            CHECK(reads == 1);
+        }
+    }
+    const auto combined = parseConditions("when/b-the_end/n-sand/d-end_stone/end/fire");
+    auto supportAndSand = [&](std::string_view names, bool down) {
+        return matchNeighborBlocks(names, down, firePos, [&](Int3 q) -> std::string_view {
+            return q == firePos + kFaceFrames[0].normal ? "end_stone" : "sand";
+        });
+    };
+    CHECK(conditionsMatch(combined, "the_end", supportAndSand));
+    CHECK(!conditionsMatch(combined, "plains", supportAndSand));
     // A custom whitelist changes the connection mask without treating unrelated blocks as connected.
     const auto custom = parseConditions("when/c-glass.tinted_glass/end/x");
     SheetSpec customSheet{Method::Horizontal, 4, 1, 4, false};

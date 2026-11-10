@@ -1,19 +1,21 @@
 package com.alastor.ctmforge.core
 
-/** Conditions travel with the atlas path, including its animation strip. Requires mod 1.3+. */
+/** Conditions travel with the atlas path and animation strip. Below-block filters require mod 1.4+. */
 data class RuleConditions(
     val biomes: List<String> = emptyList(),
     val excludeBiomes: Boolean = false,
     val connectBlocks: List<String> = emptyList(),
     val neighborBlocks: List<String> = emptyList(),
+    val belowBlocks: List<String> = emptyList(),
 ) {
-    val conditional get() = biomes.isNotEmpty() || neighborBlocks.isNotEmpty()
-    val predicateKey get() = "${if (excludeBiomes) "!" else ""}${biomes.joinToString(".")}/${neighborBlocks.joinToString(".")}"
+    val conditional get() = biomes.isNotEmpty() || neighborBlocks.isNotEmpty() || belowBlocks.isNotEmpty()
+    val predicateKey get() = "${if (excludeBiomes) "!" else ""}${biomes.joinToString(".")}/${neighborBlocks.joinToString(".")}/${belowBlocks.joinToString(".")}"
     val path: String get() {
         val parts = buildList {
             if (biomes.isNotEmpty()) add("${if (excludeBiomes) "x" else "b"}-${biomes.joinToString(".")}")
             if (connectBlocks.isNotEmpty()) add("c-${connectBlocks.joinToString(".")}")
             if (neighborBlocks.isNotEmpty()) add("n-${neighborBlocks.joinToString(".")}")
+            if (belowBlocks.isNotEmpty()) add("d-${belowBlocks.joinToString(".")}")
         }
         return if (parts.isEmpty()) "" else "when/${parts.joinToString("/")}/end/"
     }
@@ -39,7 +41,7 @@ data class RuleConditions(
                 id
             }?.distinct()?.sorted() ?: emptyList()
 
-        fun parse(biomes: String = "", connectBlocks: String = "", neighborBlocks: String = ""): RuleConditions {
+        fun parse(biomes: String = "", connectBlocks: String = "", neighborBlocks: String = "", belowBlocks: String = ""): RuleConditions {
             val value = biomes.trim()
             val exclude = value.startsWith('!')
             val biomeNames = names(if (exclude) value.drop(1) else value)
@@ -52,8 +54,8 @@ data class RuleConditions(
                 listOf(id.lowercase()) + JavaNames.blocks.filter { (java, bedrock) -> bedrock == id && java !in Vanilla.blocks }.keys
             }.distinct().sorted()
             val result = RuleConditions(biomeNames.flatMap { listOfNotNull(it, biomeAliases[it]) }.distinct().sorted(),
-                exclude, blocks(connectBlocks), blocks(neighborBlocks))
-            require(listOf(result.biomes, result.connectBlocks, result.neighborBlocks).all { it.joinToString(".").length <= 200 }
+                exclude, blocks(connectBlocks), blocks(neighborBlocks), blocks(belowBlocks))
+            require(listOf(result.biomes, result.connectBlocks, result.neighborBlocks, result.belowBlocks).all { it.joinToString(".").length <= 200 }
                 && result.path.length <= 500) { "Condition lists are too long. Use fewer names per rule." }
             return result
         }

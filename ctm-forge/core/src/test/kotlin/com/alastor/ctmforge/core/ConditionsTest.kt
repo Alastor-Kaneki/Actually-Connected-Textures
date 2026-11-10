@@ -118,6 +118,36 @@ class ConditionsTest {
         assertFalse("textures/flipbook_textures.json" in result.files)
     }
 
+    @Test fun allEndStoneAndPurpurSupportRulesRemainIndependentOfTheBiomeRule() {
+        val families = listOf(
+            Vanilla.blocks.keys.filter { it.startsWith("end_stone") || it.startsWith("end_brick") }.sorted(),
+            Vanilla.blocks.keys.filter { "purpur" in it }.sorted(),
+        )
+        assertEquals(listOf(6, 7), families.map { it.size })
+        val fire = rule.copy(block = "fire", animated = true, ticks = "3")
+        val result = build(fire.copy(biomes = "the_end"),
+            fire.copy(belowBlocks = families[0].joinToString(" ")),
+            fire.copy(belowBlocks = families[1].joinToString(" ")))
+        for (variants in variations(result)) {
+            assertEquals(4, variants.size)
+            assertTrue("/when/b-sky.the_end/end/" in variants[1].jsonObject.getValue("path").jsonPrimitive.content)
+            families.forEachIndexed { i, family ->
+                val condition = RuleConditions.parse(belowBlocks = family.joinToString(" "))
+                val path = variants[i + 2].jsonObject.getValue("path").jsonPrimitive.content
+                assertTrue(condition.conditional && condition.path in path)
+                assertTrue(condition.belowBlocks.containsAll(family))
+                assertFalse("/b-" in path)
+            }
+            assertTrue(variants.all { it.jsonObject.getValue("path").jsonPrimitive.content + ".png" in result.files })
+        }
+        val flips = Json.parseToJsonElement(result.files.getValue("textures/flipbook_textures.json").decodeToString()).jsonArray
+        val supports = flips.map { it.jsonObject }.filter { "/when/d-" in it.getValue("flipbook_texture").jsonPrimitive.content }
+        assertTrue(supports.isNotEmpty())
+        assertTrue(supports.all { it.getValue("atlas_tile_variant").jsonPrimitive.int in 2..3 && it.getValue("ticks_per_frame").jsonPrimitive.int == 3 })
+        assertFalse(result.files.keys.any { "soul_fire" in it })
+        assertFailsWith<IllegalArgumentException> { build(fire.copy(belowBlocks = "unknown_block")) }
+    }
+
     @Test fun validatesNamesAndCanonicalizesBlockAndBiomeAliases() {
         val c = RuleConditions.parse("minecraft:snowy_plains, desert", "grass_block minecraft:glass", "sand")
         assertEquals(listOf("desert", "ice_plains", "snowy_plains"), c.biomes)
@@ -144,6 +174,8 @@ class ConditionsTest {
         assertTrue(result.sheets.single().sheetPath.contains("/when/b-desert/c-glass.tinted_glass/end/"))
         val direct = assertFailsWith<ConversionException> { Converter.convert(pack("biomes=desert"), ConvertOptions(direct = true)) }
         assertTrue(direct.log.any { "require standard mode" in it })
+        val belowDirect = assertFailsWith<ConversionException> { Converter.convert(pack("ctmforge.belowBlocks=end_stone"), ConvertOptions(direct = true)) }
+        assertTrue(belowDirect.log.any { "require standard mode" in it })
         val invalid = assertFailsWith<ConversionException> { Converter.convert(pack("connectBlocks=not_a_block"), ConvertOptions()) }
         assertTrue(invalid.log.any { "Unknown connection block" in it })
     }

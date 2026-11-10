@@ -335,7 +335,8 @@ object Converter {
                 val r = Rule(path, props, method, blocks, faces.ifEmpty { FACE_NAMES.toSet() }, textures = textures)
                 r.overlay = overlay
                 r.conditions = try {
-                    RuleConditions.parse(props["biomes"] ?: "", props["connectBlocks"] ?: "", props["ctmforge.neighborBlocks"] ?: "")
+                    RuleConditions.parse(props["biomes"] ?: "", props["connectBlocks"] ?: "",
+                        props["ctmforge.neighborBlocks"] ?: "", props["ctmforge.belowBlocks"] ?: "")
                 } catch (e: IllegalArgumentException) {
                     log += "skip $path: ${e.message}"
                     continue

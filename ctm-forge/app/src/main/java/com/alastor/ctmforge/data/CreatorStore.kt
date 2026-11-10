@@ -40,6 +40,7 @@ class CreatorStore(context: Context) {
                 put("animated", r.animated); put("ticks", r.ticks); put("order", r.order)
                 put("interpolate", r.interpolate); put("innerSeams", r.innerSeams)
                 put("biomes", r.biomes); put("connectBlocks", r.connectBlocks); put("neighborBlocks", r.neighborBlocks)
+                put("belowBlocks", r.belowBlocks)
                 put("tiles", JsonArray(r.tiles.map { t -> t?.let { buildJsonObject {
                     put("asset", it.asset); put("size", it.size); put("frames", it.frames)
                 } } ?: JsonNull }))
@@ -66,6 +67,7 @@ class CreatorStore(context: Context) {
                         biomes = r["biomes"]?.jsonPrimitive?.content ?: "",
                         connectBlocks = r["connectBlocks"]?.jsonPrimitive?.content ?: "",
                         neighborBlocks = r["neighborBlocks"]?.jsonPrimitive?.content ?: "",
+                        belowBlocks = r["belowBlocks"]?.jsonPrimitive?.content ?: "",
                     )
                 })
         }

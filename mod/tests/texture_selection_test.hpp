@@ -4,7 +4,7 @@
 
 static void textureSelectionTests() {
     using namespace game;
-    constexpr size_t count = 5;
+    constexpr size_t count = 7;
     alignas(16) char graphics[0x80]{};
     alignas(16) char face[off::BG_FaceItemSize]{};
     alignas(16) char variant[24]{};
@@ -21,12 +21,16 @@ static void textureSelectionTests() {
         "textures/blocks/ctm/fixed-1x1-1/when/b-sky.the_end/end/fire",
         "textures/blocks/ctm/fixed-1x1-1/when/b-desert/n-sand/end/sand",
         "textures/blocks/ctm/fixed-1x1-1-o/when/b-the_end/end/overlay",
+        "textures/blocks/ctm/fixed-1x1-1/when/d-end_stone/end/fire",
+        "textures/blocks/ctm/fixed-1x1-1/when/d-purpur_block.purpur_pillar/end/fire",
     };
     for (size_t i = 0; i < count; ++i) new (uv + i * off::UV_Size + off::UV_Path) std::string(paths[i]);
     struct Context {
-        std::string_view biome, neighbor;
+        std::string_view biome, neighbor, below{};
         bool matches(const SheetSpec& s) {
-            return conditionsMatch(s.conditions, biome, [&](std::string_view n) { return nameInList(n, neighbor); });
+            return conditionsMatch(s.conditions, biome, [&](std::string_view n, bool down) {
+                return nameInList(n, down ? below : neighbor);
+            });
         }
     } context{"minecraft:the_end", "end_stone"};
     auto set = findSheets(graphics, 0, 0, context);
@@ -41,6 +45,15 @@ static void textureSelectionTests() {
     CHECK(findSheets(graphics, 0, 0, context).normal == uv + off::UV_Size);
     context = {"", "sand"};
     CHECK(findSheets(graphics, 0, 0, context).normal == uv + off::UV_Size);
+    context = {"plains", "stone", "end_stone"};
+    CHECK(findSheets(graphics, 0, 0, context).normal == uv + 5 * off::UV_Size);
+    context = {"plains", "end_stone", "purpur_pillar"};
+    CHECK(findSheets(graphics, 0, 0, context).normal == uv + 6 * off::UV_Size);
+    context = {"plains", "end_stone", "stone"};
+    CHECK(findSheets(graphics, 0, 0, context).normal == uv + off::UV_Size);
+    context = {"the_end", "stone", "stone"};
+    CHECK(findSheets(graphics, 0, 0, context).normal == uv + 2 * off::UV_Size);
+    context = {"", "sand", ""};
     // Conditional-only lists keep the base when the condition fails.
     *reinterpret_cast<std::string*>(uv + off::UV_Size + off::UV_Path) =
         "textures/blocks/ctm/fixed-1x1-1/when/b-the_end/end/other";

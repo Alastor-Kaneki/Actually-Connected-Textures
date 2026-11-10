@@ -48,6 +48,16 @@ inline constexpr FaceFrame kFaceFrames[6] = {
     {{0, 0, 1}, {0, -1, 0}, {0, 0, -1}, {0, 1, 0}, {1, 0, 0}},    // east
 };
 
+// Shared by runtime conditions and host tests. Below-only rules must never match
+// a block beside or above the target. Bedrock facing zero is world down.
+template<class NameAt>
+bool matchNeighborBlocks(std::string_view names, bool belowOnly, Int3 pos, NameAt&& nameAt) {
+    bool match = false;
+    for (int i = 0; i < (belowOnly ? 1 : 6); ++i)
+        match |= nameInList(names, nameAt(pos + kFaceFrames[i].normal));
+    return match;
+}
+
 // 47-tile lookup, index bits: L=1 DL=2 D=4 DR=8 R=16 UR=32 U=64 UL=128.
 inline constexpr uint8_t kCtm47[256] = {
     0, 3, 0, 3, 12, 5, 12, 15, 0, 3, 0, 3, 12, 5, 12, 15, 1, 2, 1, 2, 4, 7, 4, 29, 1, 2, 1, 2, 13, 31, 13, 14,
