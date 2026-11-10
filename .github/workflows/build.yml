@@ -37,6 +37,11 @@ jobs:
       - name: Python syntax
         run: python3 -m compileall -q converter tools mod/package.py
 
+      - name: Python converter tests
+        run: |
+          python3 -m pip install "Pillow>=10,<13"
+          python3 -m unittest discover -s converter -p 'test_*.py'
+
       - name: Get preloader-android headers
         uses: actions/checkout@v7
         with:

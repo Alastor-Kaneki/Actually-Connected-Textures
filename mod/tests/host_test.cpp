@@ -44,6 +44,35 @@ static void unitTests() {
     CHECK(!parse("textures/blocks/ctm/ctm-8x5-47/x", s));      // count > cols*rows
     CHECK(!parse("textures/blocks/ctm/bogus-8x6-47/x", s));
 
+    // Biome and touching filters combine with AND; unknown biome never passes an exclusion.
+    CHECK(parse("textures/blocks/ctm/ctm-8x6-47/when/b-desert.plains/c-glass.tinted_glass/n-sand/end/x", s));
+    CHECK(s.conditions.valid && s.conditions.conditional());
+    CHECK(nameInList(s.conditions.connections, "minecraft:tinted_glass"));
+    CHECK(!nameInList(s.conditions.connections, "stained_glass"));
+    CHECK(nameInList("sea_lantern.sealantern", "minecraft:seaLantern"));
+    auto touchingSand = [](std::string_view list) { return nameInList(list, "minecraft:sand"); };
+    auto touchingStone = [](std::string_view list) { return nameInList(list, "stone"); };
+    CHECK(conditionsMatch(s.conditions, "minecraft:desert", touchingSand));
+    CHECK(!conditionsMatch(s.conditions, "forest", touchingSand));
+    CHECK(!conditionsMatch(s.conditions, "desert", touchingStone));
+    CHECK(parse("textures/blocks/ctm/fixed-1x1-1/when/x-swamp/end/anim/x", s));
+    CHECK(conditionsMatch(s.conditions, "plains", touchingStone));
+    CHECK(!conditionsMatch(s.conditions, "swamp", touchingStone));
+    CHECK(!conditionsMatch(s.conditions, "", touchingStone));
+    for (const char* bad : {"when/b-desert/b-plains/end/x", "when/b-desert/x-plains/end/x",
+             "when/b-desert/q-stone/end/x", "when/b-/end/x", "when/b-desert..plains/end/x",
+             "when/b-desert/x", "when/n-../end/x", "when/end/x"}) {
+        CHECK(!parseConditions(bad).valid);
+        CHECK(!conditionsMatch(parseConditions(bad), "desert", touchingSand));
+    }
+    CHECK(parse("textures/blocks/ctm/ctm-8x6-47/x", s) && !s.conditions.conditional());
+    // A custom whitelist changes the connection mask without treating unrelated blocks as connected.
+    const auto custom = parseConditions("when/c-glass.tinted_glass/end/x");
+    SheetSpec customSheet{Method::Horizontal, 4, 1, 4, false};
+    auto neighbor = [&](Int3 p) { return nameInList(custom.connections, p.x == 1 ? "tinted_glass" : "stone"); };
+    CHECK(selectTile(customSheet, kFaceFrames[3], {0, 0, 0}, neighbor) == 0);
+    CHECK(selectTile(customSheet, kFaceFrames[2], {0, 0, 0}, neighbor) == 2);
+
     // tile rects
     SheetSpec c{Method::Ctm, 8, 6, 47, false};
     UvRect r = tileRect(c, 9, {0.f, 0.f, 0.8f, 0.6f});

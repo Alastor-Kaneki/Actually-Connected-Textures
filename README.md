@@ -78,12 +78,17 @@ them in game; edits are written back to that JSON file.
   Several overlay rules on one block face are merged in pack order, and an
   overlay can share a face with a normal CTM rule. Overlays only apply to
   full-cube blocks, not to panes. Overlay animations use the first frame, and
-  `connectTiles`, `connectBlocks`, `tintIndex`, `tintBlock` and `layer` are ignored.
+  `connectTiles`, `tintIndex`, `tintBlock` and `layer` are ignored.
+  `connectBlocks` restricts transitions to the named neighboring blocks.
 * Rule keys: `matchBlocks`, `matchTiles` (by block name), `tiles`, `faces`,
   `innerSeams`, `weights`, `width`/`height`. `connect` is always `block`.
-  Biome, height and block-state conditions are ignored.
+  `biomes` includes/excludes biome names. `connectBlocks` chooses which blocks
+  count as connected, and `ctmforge.neighborBlocks` activates a rule when any of
+  the six immediately adjacent blocks matches. Height and block-state conditions are ignored.
 * Not supported: Fusion's `overlay` layout, and overlay rules in `direct` packs.
-  Only the first non-overlay rule applies to a block face.
+  Conditional rules require standard (variations) mode. The first matching
+  conditional rule wins; otherwise the first unconditional rule or vanilla texture is used.
+  See [conditional textures](docs/conditional-textures.md) for examples and limits.
 * Fusion (SuperMartijn642) connecting textures, from `pack.mcmeta` overrides folders, block
   models (`fusion:model`) and texture `.mcmeta` files: the `full`, `simple`, `compact`,
   `pieced`, `horizontal` and `vertical` layouts, plus Fusion's random, continuous and

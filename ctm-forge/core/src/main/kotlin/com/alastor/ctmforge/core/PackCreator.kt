@@ -26,6 +26,9 @@ data class CreatorRule(
     val order: String = "",
     val interpolate: Boolean = false,
     val innerSeams: Boolean = false,
+    val biomes: String = "",
+    val connectBlocks: String = "",
+    val neighborBlocks: String = "",
 ) {
     fun withMethod(value: CreatorMethod) = copy(method = value, tiles = List(value.tileCount) { tiles.getOrNull(it) })
 }
@@ -102,7 +105,7 @@ object PackCreator {
         files["pack.mcmeta"] = buildJsonObject {
             putJsonObject("pack") { put("pack_format", JavaPack.CURRENT_FORMAT); put("description", project.description) }
         }.toString().toByteArray()
-        val occupied = mutableSetOf<Pair<String, String>>()
+        val occupied = mutableSetOf<Triple<String, String, String>>()
         var pixels = 0L
         var outputPixels = 0L
         project.rules.forEachIndexed { ri, rule ->
@@ -112,8 +115,9 @@ object PackCreator {
                 require(block in blocks) { "Choose a supported vanilla block ID." }
                 require(rule.faces in faceOptions) { "Choose valid faces." }
                 val bedrock = Bedrock.block(block)!!
+                val conditions = RuleConditions.parse(rule.biomes, rule.connectBlocks, rule.neighborBlocks)
                 faces(rule.faces).forEach { f ->
-                    require(occupied.add(bedrock to f)) { "Another rule already covers $f on $bedrock. Choose different faces." }
+                    require(occupied.add(Triple(bedrock, f, conditions.predicateKey))) { "Another rule already covers $f on $bedrock. Choose different faces or biome/neighbor conditions." }
                 }
                 require(if (rule.method == CreatorMethod.RANDOM) rule.tiles.size in 1..16 else rule.tiles.size == rule.method.tileCount) { "Wrong number of tiles for this method." }
                 require(rule.tiles.all { it != null }) { "Import every tile before building." }
@@ -158,10 +162,14 @@ object PackCreator {
                         }
                     }.toString().toByteArray()
                 }
+                fun tokens(value: String) = value.trim().split(Regex("[\\s,]+")).joinToString(" ")
                 files["$dir/rule.properties"] = buildString {
                     append("matchBlocks=minecraft:$block\nmethod=${rule.method.property}\n")
                     append("tiles=${images.indices.joinToString(" ")}\nfaces=${rule.faces}\n")
                     append("connect=block\ninnerSeams=${rule.innerSeams}\n")
+                    if (conditions.biomes.isNotEmpty()) append("biomes=${tokens(rule.biomes)}\n")
+                    if (conditions.connectBlocks.isNotEmpty()) append("connectBlocks=${tokens(rule.connectBlocks)}\n")
+                    if (conditions.neighborBlocks.isNotEmpty()) append("ctmforge.neighborBlocks=${tokens(rule.neighborBlocks)}\n")
                 }.toByteArray()
                 if (ri == 0) files["pack.png"] = Png.encode(images.first().firstFrame(), 6)
             } catch (e: IllegalArgumentException) {

@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include "Conditions.hpp"
 
 namespace ctm {
 
@@ -22,6 +23,7 @@ struct SheetSpec {
     uint16_t count = 0;
     bool innerSeams = false;
     bool overlay = false;  // drawn as an extra quad on top of the base texture (OptiFine overlay methods)
+    Conditions conditions{};
 };
 
 struct Int3 {
@@ -128,6 +130,7 @@ inline bool parseSheetPath(const char* path, size_t len, SheetSpec& out) {
                    : method == Method::Overlay ? 17 : 1;
     if (count < need) return false;
     out = {method, static_cast<uint8_t>(cols), static_cast<uint8_t>(rows), static_cast<uint16_t>(count), seams, overlay};
+    out.conditions = parseConditions(std::string_view(slash + 1, end - slash - 1));
     return true;
 }
 
