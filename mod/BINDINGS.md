@@ -31,3 +31,40 @@ Nested build calls restore the previous thread-local tessellator.
 Only the biome signature is optional. A missing binding skips biome rules rather
 than disabling unrelated connected textures. These binary inspections do not
 replace in-game testing or guarantee compatibility with later Minecraft builds.
+
+## Position-free lookups (1.3.1)
+
+The earlier hook covered only `getTexture(BlockPos const&, slot, variant)`.
+Other classic renderers call position-free overloads, which select variation zero
+and bypass that hook. 1.3.1 hooks all three texture accessors, and captures the live
+BlockTessellator and BlockPos at `tessellateInWorld` and `tessellateBlockInWorld`.
+Nested scopes restore both pointers; inventory/export calls still require the
+existing terrain-build guard before conditional rules can run.
+
+All five added signatures resolve uniquely in both binaries above:
+
+| Binding | 26.60 VA | 26.62 VA |
+| --- | --- | --- |
+| getTexture(slot, variant) | `0xab119a0` | `0xab11ce0` |
+| getTexture(slot, Block const&) | `0xab11b6c` | `0xab11eac` |
+| Block::getVariant | `0x109f7f30` | `0x109f861c` |
+| tessellateInWorld | `0xaa62a0c` | `0xaa62d4c` |
+| tessellateBlockInWorld | `0xaa5d104` | `0xaa5d444` |
+
+The first position-free accessor has several nearly identical neighboring
+functions. Its pattern includes the `FaceItem +0x50` variants access and the
+`umaddl x8` result, distinguishing the UV-returning method from vector-returning
+and carried-texture methods. Block::getVariant dispatches through BlockLegacy's
+vtable slot `0x340`; the by-block hook uses that accessor rather than assuming
+variant zero. The world entry's AArch64 arguments are `(this, Tessellator&, Block
+const&, BlockPos const&, bool)`; the cube entry additionally takes a 64-bit face
+mask and an AirAndSimpleBlockBits pointer.
+
+Fire is shape 3 in the world dispatcher. In 26.62 the branch at `0xaa63420`
+invokes `tessellateFireInWorld` at `0xaa686f0`, which calls the position-taking
+texture getter at `0xaa688e8` (slot 1) and `0xaa68900` (slot 0). Thus the missing
+position-free hook alone does **not** explain the supplied fire pack. The converter
+now emits unambiguous six-face aliases and restores vanilla flipbooks on the new
+aliases' base variations. Bounded status diagnostics report actual biome/neighbor
+names and whether filters matched, to support device diagnosis without claiming
+an observed in-game fix.
