@@ -54,7 +54,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------------ navigation
 
-    enum class Tab { BROWSE, LIBRARY, SETTINGS }
+    enum class Tab { BROWSE, CREATE, LIBRARY, SETTINGS }
+
+    val creator = CreatorController(this.app, viewModelScope) { push(Route.Pack(it)) }
 
     sealed interface Route {
         data class Project(val hit: Modrinth.Hit) : Route
@@ -442,7 +444,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // Last in the class body: everything above must be initialised before the first search.
     init {
         viewModelScope.launch(Dispatchers.IO) { library.reload() }
-        updater.busy = { session?.busy == true }
+        updater.busy = { session?.busy == true || creator.busy || creator.pendingSaves > 0 }
         search()
     }
 
