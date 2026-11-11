@@ -15,7 +15,7 @@ No Java code, Programmer Art variants or Java pane-culling models are included.
 
 ## Coverage and limits
 
-42 Bedrock block IDs: clear glass and panes, all 16 stained colors and panes,
+42 CTM target block IDs: clear glass and panes, all 16 stained colors and panes,
 tinted glass, bookshelves, normal/red sandstone, cut normal/red sandstone and
 chiseled normal/red sandstone. Glass connects to the same block/color. Bookshelf
 and cut/chiseled sandstone use horizontal connections. Normal sandstone connects
@@ -23,6 +23,11 @@ its side texture vertically when a normal same-color sandstone block, slab,
 double slab, stair or wall is directly above. The top-rule target is the full
 sandstone block; shape textures and ambiguous legacy stone-slab states are not
 changed. Smooth sandstone is not part of Continuity's default rules.
+
+The generated `blocks.json` also explicitly preserves both vanilla smooth sandstone
+variants (44 definitions total). Each sandstone family is emitted base-first,
+followed by its chiseled, cut and smooth definitions and their own carried textures.
+This prevents legacy family inheritance from replacing specific variant mappings.
 
 Bedrock cannot use Continuity's `resourceCondition` mechanism. Disable **Default
 Connected Textures** in the mod menu when using a plain texture pack that replaces
