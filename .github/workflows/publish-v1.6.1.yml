@@ -1,0 +1,111 @@
+name: Publish tested v1.6.1
+
+on:
+  push:
+    branches: ["release/publish-v1.6.1"]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-connected-textures-v1.6.1
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN_ID: "42945830219"
+      BUILD_SHA: f06e6f83d36aad457e567c9cfe751f05a971864a
+      TARGET_SHA: 20e5c2fc5e1b2ddf2df608d51ee340eeeb6fabda
+      MOD_SHA256: 2e8396484c465cdc7ec09f832e3232e5d88d724acdf1cb349df52bef13c5f59d
+      APK_SHA256: 30709e157bd74fb6821a3ec417208f20a22b22592b7b2fe7c31b479660260b57
+    steps:
+      - name: Verify tested source
+        run: |
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN_ID" > run.json
+          gh api "repos/$GH_REPO/git/commits/$BUILD_SHA" > build.json
+          gh api "repos/$GH_REPO/git/commits/$TARGET_SHA" > target.json
+          python3 - <<'PY'
+          import json, os
+          run = json.load(open("run.json"))
+          assert run["status"] == "completed" and run["conclusion"] == "success"
+          assert run["head_sha"] == os.environ["BUILD_SHA"]
+          assert json.load(open("build.json"))["tree"]["sha"] == json.load(open("target.json"))["tree"]["sha"]
+          print("Successful build matches the merged source")
+          PY
+
+      - name: Download and verify tested artifacts
+        run: |
+          gh run download "$BUILD_RUN_ID" --name ConnectedTextures-levipack --dir dist
+          gh run download "$BUILD_RUN_ID" --name CTM-Forge-apk --dir dist
+          python3 - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+          for name, key in [("ConnectedTextures.levipack", "MOD_SHA256"), ("CTM-Forge-16.apk", "APK_SHA256")]:
+              assert hashlib.sha256(Path("dist", name).read_bytes()).hexdigest() == os.environ[key]
+          with zipfile.ZipFile("dist/ConnectedTextures.levipack") as mod:
+              assert json.loads(mod.read("manifest.json"))["version"] == "1.6.0"
+              assert len(json.loads(mod.read("resources/minecraft_resource_packs/ctm_defaults/blocks.json"))) - 1 == 42
+          with zipfile.ZipFile("dist/CTM-Forge-16.apk") as apk:
+              assert apk.read("assets/ConnectedTextures.levipack") == Path("dist/ConnectedTextures.levipack").read_bytes()
+          print("Verified both artifacts and the APK's embedded mod")
+          PY
+
+      - name: Create draft release and upload verified assets
+        run: |
+          python3 - <<'PY'
+          import json, os
+          notes = """CTM Forge's displayed version is now **The Glass Has Unionized**.
+
+          The numeric Android version code is 16, allowing a normal update from build 15.
+          This is a version-label update. The bundled Connected Textures mod remains 1.6.0,
+          including automatic Continuity defaults and the separate grass/snow switches.
+
+          APK and native builds and the existing test suite passed. The APK's embedded
+          mod matches the standalone download. Source changes are in PR #13.
+          """
+          payload = {"tag_name": "v1.6.1", "target_commitish": os.environ["TARGET_SHA"], "name": "CTM Forge 16 — The Glass Has Unionized", "body": notes, "draft": True, "prerelease": False}
+          with open("create.json", "w") as f:
+              json.dump(payload, f)
+          PY
+          gh api --method POST "repos/$GH_REPO/releases" --input create.json > draft.json
+          python3 - <<'PY'
+          import json, os
+          release = json.load(open("draft.json"))
+          assert release["draft"] and release["tag_name"] == "v1.6.1"
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"RELEASE_ID={release['id']}\n")
+          PY
+          gh release upload v1.6.1 dist/ConnectedTextures.levipack dist/CTM-Forge-16.apk
+
+      - name: Verify uploaded assets and publish as latest
+        run: |
+          # Draft tags do not resolve via /releases/tags; use the returned release ID.
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" > release.json
+          python3 - <<'PY'
+          import json, os
+          release = json.load(open("release.json"))
+          assert release["draft"] and not release["prerelease"]
+          assert release["target_commitish"] == os.environ["TARGET_SHA"]
+          assets = {a["name"]: a for a in release["assets"]}
+          expected = {"ConnectedTextures.levipack": os.environ["MOD_SHA256"], "CTM-Forge-16.apk": os.environ["APK_SHA256"]}
+          assert set(assets) == set(expected)
+          for name, digest in expected.items():
+              assert assets[name]["state"] == "uploaded"
+              assert assets[name]["digest"] == "sha256:" + digest
+          PY
+          gh api --method PATCH "repos/$GH_REPO/releases/$RELEASE_ID" -F draft=false -f make_latest=true > published.json
+          gh api "repos/$GH_REPO/git/ref/tags/v1.6.1" > tag.json
+          python3 - <<'PY'
+          import json, os
+          release = json.load(open("published.json"))
+          assert not release["draft"] and not release["prerelease"]
+          assert release["tag_name"] == "v1.6.1" and release["published_at"]
+          assert json.load(open("tag.json"))["object"]["sha"] == os.environ["TARGET_SHA"]
+          print(release["html_url"])
+          PY
