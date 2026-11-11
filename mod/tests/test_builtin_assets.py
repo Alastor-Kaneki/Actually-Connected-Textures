@@ -21,7 +21,7 @@ class BuiltinAssetsTest(unittest.TestCase):
         self.assertTrue(all(t["path"] == "textures/blocks/grass_top" and
                             t["overlay_color"].startswith("#") for t in textures[:-1]))
         self.assertEqual(textures[-1], "textures/blocks/snow")
-        # No permanent white images in the always-on bundle.
+        # The full-side bundle must work without enabling whiter snow.
         self.assertEqual(list((grass / "textures").rglob("*.png")), [])
 
     def test_snow_contains_only_optional_effects(self):

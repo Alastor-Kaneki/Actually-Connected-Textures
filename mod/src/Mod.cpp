@@ -63,7 +63,7 @@ struct Config {
     bool blocks = true;
     bool panes = true;
     bool overlays = true;
-    bool connectedGrass = true;
+    bool connectedGrass = false;
     bool whiterSnow = false;
 };
 Config g_cfg;
@@ -654,7 +654,7 @@ void registerModMenu() {
         .config("blocks", "Full blocks", pl::modmenu::ConfigType::Toggle, g_cfg.blocks ? "true" : "false")
         .config("panes", "Panes", pl::modmenu::ConfigType::Toggle, g_cfg.panes ? "true" : "false")
         .config("overlays", "Overlays", pl::modmenu::ConfigType::Toggle, g_cfg.overlays ? "true" : "false")
-        .config("connectedGrass", "Connected Grass (restart game)", pl::modmenu::ConfigType::Toggle, g_cfg.connectedGrass ? "true" : "false")
+        .config("connectedGrass", "Full Grass Sides (restart game)", pl::modmenu::ConfigType::Toggle, g_cfg.connectedGrass ? "true" : "false")
         .config("whiterSnow", "Whiter Snow (restart game)", pl::modmenu::ConfigType::Toggle, g_cfg.whiterSnow ? "true" : "false")
         .registerModule();
     if (!ok) LOGW("Mod Menu registration failed");

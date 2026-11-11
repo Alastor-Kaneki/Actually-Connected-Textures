@@ -12,7 +12,7 @@ manifest = {
     "name": "Connected Textures",
     "author": "Alastor",
     "description": "OptiFine-style connected textures (CTM) for glass and other blocks, with overlays, biome filters and custom block connections. "
-                   "Includes Connected Grass and optional Whiter Snow (Mod Menu; restart Minecraft after changes). "
+                   "Includes optional Full Grass Sides and Whiter Snow (both off by default; Mod Menu; restart Minecraft after changes). "
                    "Other CTM effects need converted resource packs. Minecraft 1.26.60 / 1.26.62; LeviLauncher 1.5.27+.",
     "version": "1.5.0",
     "entry": "libConnectedTextures.so",
