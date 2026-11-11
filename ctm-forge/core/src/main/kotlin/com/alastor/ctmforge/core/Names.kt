@@ -80,6 +80,30 @@ internal object Bedrock {
         return out
     }
 
+    /** Reassert flattened sandstone variants after their legacy family base.
+     * Untargeted variants keep vanilla world and inventory textures; explicit
+     * pack rules stay intact. Mirrors preserve_sandstone_variants in Python.
+     */
+    fun preserveSandstoneVariants(blocks: Map<String, JsonElement>): JsonObject {
+        val families = listOf("sandstone", "red_sandstone").filter { it in blocks }.associateWith {
+            listOf(it, "chiseled_$it", "cut_$it", "smooth_$it")
+        }
+        val parents = families.flatMap { (base, family) -> family.map { it to base } }.toMap()
+        val result = LinkedHashMap<String, JsonElement>()
+        for ((block, entry) in blocks) {
+            val base = parents[block]
+            if (base == null) result[block] = entry
+            else if (base !in result) for (member in families.getValue(base)) {
+                result[member] = blocks[member] ?: run {
+                    val normal = LinkedHashMap(Vanilla.blocks.getValue(member).jsonObject)
+                    normal.putIfAbsent("carried_textures", normal.getValue("textures"))
+                    JsonObject(normal)
+                }
+            }
+        }
+        return JsonObject(result)
+    }
+
     /** Bedrock path -> every block face showing it. */
     val pathUses: Map<String, List<PathUse>> by lazy {
         val uses = LinkedHashMap<String, MutableList<PathUse>>()

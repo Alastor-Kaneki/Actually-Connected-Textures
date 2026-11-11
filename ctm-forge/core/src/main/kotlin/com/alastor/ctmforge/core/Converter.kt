@@ -922,7 +922,7 @@ object Converter {
                 "resource_pack_name" to JsonPrimitive(slug), "texture_name" to JsonPrimitive("atlas.terrain"),
                 "padding" to JsonPrimitive(8), "num_mip_levels" to JsonPrimitive(4), "texture_data" to JsonObject(terrain),
             )))
-            files["blocks.json"] = pretty(JsonObject(blocksJson))
+            files["blocks.json"] = pretty(Bedrock.preserveSandstoneVariants(blocksJson))
             // Both variations must live in this pack, or Bedrock removes the lower
             // priority fallback and clamps the sheet's animation onto slot zero.
             fun fallbackImage(path: String) = files["$path.png"] ?: VanillaImages.png(path)

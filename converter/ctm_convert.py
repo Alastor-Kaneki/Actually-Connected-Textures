@@ -41,6 +41,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 import io
 import json
 import math
@@ -164,6 +165,34 @@ def face_aliases(entry: dict) -> dict:
             if isinstance(a, str):
                 out[f] = a
     return out
+
+
+def preserve_sandstone_variants(blocks: dict) -> dict:
+    """Emit complete flattened sandstone families, base before specific variants.
+
+    Bedrock's legacy family handling can apply a base definition to its variants.
+    Reassert each variant after the base, including vanilla variants without CTM
+    rules. Keep explicit pack rules and their carried textures intact.
+    """
+    families = {
+        base: (base, "chiseled_" + base, "cut_" + base, "smooth_" + base)
+        for base in ("sandstone", "red_sandstone") if base in blocks
+    }
+    parents = {block: base for base, family in families.items() for block in family}
+    result = {}
+    for block, entry in blocks.items():
+        base = parents.get(block)
+        if base is None:
+            result[block] = entry
+        elif base not in result:
+            for member in families[base]:
+                if member in blocks:
+                    result[member] = blocks[member]
+                else:
+                    normal = copy.deepcopy(VANILLA_BLOCKS[member])
+                    normal.setdefault("carried_textures", copy.deepcopy(normal["textures"]))
+                    result[member] = normal
+    return result
 
 
 def _build_uses():
@@ -1687,7 +1716,7 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
     files["textures/terrain_texture.json"] = json.dumps({
         "resource_pack_name": slug, "texture_name": "atlas.terrain", "padding": 8, "num_mip_levels": 4,
         "texture_data": terrain}, indent=1).encode()
-    files["blocks.json"] = json.dumps(blocks_json, indent=1).encode()
+    files["blocks.json"] = json.dumps(preserve_sandstone_variants(blocks_json), indent=1).encode()
     # Keep every fallback in the same pack as its sheet: otherwise Bedrock's
     # pack-stack filtering drops it and animation variant 1 clamps to slot 0.
     # Private paths avoid overriding normal/soul fire and other unrelated blocks.

@@ -48,7 +48,7 @@ without the real key.
 
 ### Install
 
-1. Import `ConnectedTextures.levipack` **1.6.0** in LeviLauncher and enable it.
+1. Import `ConnectedTextures.levipack` **1.6.2** in LeviLauncher and enable it.
 2. **Default Connected Textures** is **on by default**: clear/stained/tinted glass,
    glass panes, bookshelves and sandstone connect without importing another pack.
    On **LeviLauncher 1.5.27+**, the launcher automatically installs and activates the
@@ -84,8 +84,8 @@ them in game; edits are written back to that JSON file.
 rules, 5 horizontal rules (bookshelves, cut/chiseled sandstone and their red versions),
 and 2 vertical side rules for normal/red sandstone. Normal sandstone connects beneath
 same-color normal sandstone blocks, slabs, double slabs, stairs or walls. The side
-rule changes full blocks only; smooth sandstone and slab/stair/wall artwork are not
-included. These are adapted resources, not the Java Continuity mod or its pane-culling
+rule changes full blocks only; smooth sandstone keeps its vanilla textures and
+slab/stair/wall artwork is not included. These are adapted resources, not the Java Continuity mod or its pane-culling
 models. See [source and adaptation notes](mod/assets/builtin/ctm_defaults/SOURCE.md).
 
 A higher-priority converted CTM pack can override these block aliases. For a plain
@@ -105,8 +105,16 @@ The main module switch also disables all three built-in bundles after a restart.
 The launcher automatically manages the bundled resources and removes their active
 copies when the mod is disabled. Existing user/world resource packs can override
 them. Disable the separately imported Connected Grass pack if it is active, since
-its own Whiter Snow textures would otherwise remain enabled. CTM Forge build **16**
-(**The Glass Has Unionized**) includes the same mod 1.6.0. Fire and soul-fire rules are unaffected.
+its own Whiter Snow textures would otherwise remain enabled. CTM Forge build **17**
+(**The Glass Has Unionized**) includes the same mod 1.6.2. Fire and soul-fire rules are unaffected.
+
+**Sandstone variant compatibility (1.6.2):** bundled and newly converted resources
+write base sandstone before its chiseled, cut and smooth variants, with explicit
+world and inventory textures for every variant. This avoids relying on Bedrock's
+legacy family inheritance. Existing separately imported sandstone CTM packs must
+be reconverted with build 17 and replaced; updating the mod refreshes its bundled
+defaults only. Regression tests verify the output definitions and pixels; the
+reported in-game rendering issue still needs confirmation on the device.
 
 ### What's supported
 

@@ -11,11 +11,15 @@ Usage: merge_packs.py OUT.mcpack NAME SLUG DESCRIPTION PACK1.mcpack [PACK2.mcpac
 import copy
 import io
 import json
+from pathlib import Path
 import sys
 import uuid
 import zipfile
 
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "converter"))
+from ctm_convert import preserve_sandstone_variants
 
 FACES = ("down", "up", "north", "south", "west", "east")
 SIDES = {"north", "south", "west", "east"}
@@ -138,6 +142,7 @@ def main():
         },
         "modules": [{"type": "resources", "uuid": str(uuid.uuid5(ns, "resources")), "version": [1, 0, 0]}],
     }, indent=1).encode()
+    merged_blocks = preserve_sandstone_variants(merged_blocks)
     files["blocks.json"] = json.dumps(merged_blocks, indent=1).encode()
     files["textures/terrain_texture.json"] = json.dumps({
         "resource_pack_name": slug, "texture_name": "atlas.terrain", "padding": 8, "num_mip_levels": 4,
@@ -148,7 +153,7 @@ def main():
         for k in sorted(files):
             z.writestr(k, files[k])
 
-    report = {"blocks": len(all_blocks), "aliases": len(terrain), "files": len(files), "per_pack": {}}
+    report = {"blocks": len(merged_blocks) - 1, "aliases": len(terrain), "files": len(files), "per_pack": {}}
     for i, pk in enumerate(packs):
         won = sorted(b for b, who in winners.items() if i in who.values())
         report["per_pack"][pk["manifest"]["header"]["name"]] = {"blocks_won": len(won), "blocks": won}

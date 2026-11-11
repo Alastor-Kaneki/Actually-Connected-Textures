@@ -31,7 +31,8 @@ class BuiltinContinuityTest(unittest.TestCase):
         self.assertEqual(self.summary["rules"], 42)
         self.assertEqual(self.summary["methods"], {"ctm": 35, "horizontal": 5, "top": 2})
         self.assertEqual(self.summary["log"], [])
-        self.assertEqual(len(self.blocks) - 1, 42)
+        self.assertEqual(len(self.summary["blocks"]), 42)
+        self.assertEqual(len(self.blocks) - 1, 44)  # includes two preserved vanilla smooth variants
         for unrelated in ("grass", "snow", "fire", "soul_fire", "stone_block_slab", "sandstone_stairs"):
             self.assertNotIn(unrelated, self.blocks)
         self.assertFalse(any(n.endswith(".class") for n in self.files))
@@ -91,6 +92,21 @@ class BuiltinContinuityTest(unittest.TestCase):
             sheet = pixels(self.files[path + ".png"])
             base = pixels(self.files[self.terrain[alias]["textures"]["variations"][0]["path"] + ".png"])
             self.assertEqual(sheet.crop((0, 0, 16, 16)).tobytes(), base.tobytes())
+
+    def test_sandstone_variants_keep_distinct_world_and_inventory_definitions(self):
+        order = list(self.blocks)
+        for base in ("sandstone", "red_sandstone"):
+            side_aliases = set()
+            for block in (base, "chiseled_" + base, "cut_" + base, "smooth_" + base):
+                entry = self.blocks[block]
+                self.assertEqual(entry["carried_textures"], ctm.VANILLA_BLOCKS[block]["textures"])
+                side_aliases.add(ctm.face_aliases(entry)["north"])
+                if block != base:
+                    self.assertLess(order.index(base), order.index(block))
+            self.assertEqual(len(side_aliases), 4)
+            smooth = "smooth_" + base
+            self.assertEqual(self.blocks[smooth]["textures"], ctm.VANILLA_BLOCKS[smooth]["textures"])
+            self.assertNotIn("ctm_continuity_defaults_" + smooth, self.terrain)
 
     def test_license_and_editable_sources_are_shipped(self):
         original = self.files["source/continuity-default.zip"]
