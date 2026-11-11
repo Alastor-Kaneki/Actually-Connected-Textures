@@ -16,7 +16,7 @@ manifest = {
     "description": "OptiFine-style connected textures (CTM) for glass and other blocks, with overlays, biome filters and custom block connections. "
                    "Includes Continuity default textures (on), Full Grass Sides and Whiter Snow (off). "
                    "Mod Menu switches; restart Minecraft after changes. Minecraft 1.26.60 / 1.26.62; LeviLauncher 1.5.27+.",
-    "version": "1.6.2",
+    "version": "1.7.0",
     "entry": "libConnectedTextures.so",
     "icon": "icon.png",
     "overwrite_files": ["icon.png"],

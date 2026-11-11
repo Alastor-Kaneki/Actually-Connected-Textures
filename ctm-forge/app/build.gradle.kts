@@ -30,7 +30,7 @@ android {
         applicationId = "com.alastor.ctmforge"
         minSdk = 28
         targetSdk = 36
-        versionCode = 17
+        versionCode = 18
         versionName = "The Glass Has Unionized"
     }
 

@@ -48,7 +48,7 @@ without the real key.
 
 ### Install
 
-1. Import `ConnectedTextures.levipack` **1.6.2** in LeviLauncher and enable it.
+1. Import `ConnectedTextures.levipack` **1.7.0** in LeviLauncher and enable it.
 2. **Default Connected Textures** is **on by default**: clear/stained/tinted glass,
    glass panes, bookshelves and sandstone connect without importing another pack.
    On **LeviLauncher 1.5.27+**, the launcher automatically installs and activates the
@@ -107,6 +107,34 @@ copies when the mod is disabled. Existing user/world resource packs can override
 them. Disable the separately imported Connected Grass pack if it is active, since
 its own Whiter Snow textures would otherwise remain enabled. CTM Forge build **17**
 (**The Glass Has Unionized**) includes the same mod 1.6.2. Fire and soul-fire rules are unaffected.
+
+**CTM Forge build 18 / mod 1.7.0:** copper-grate imports now recognize OptiFine's
+implicit filename targets (`copper_grate.properties` means `matchTiles=copper_grate`).
+Explicit `matchBlocks` / `matchTiles` always take precedence. Waxed copper blocks
+reuse their source pack's unwaxed base texture instead of losing that fallback.
+This fixes a reproduced converter failure; a specific pack may still contain
+unsupported rules. The conversion log identifies inferred targets and skipped files.
+
+Both converters and the native renderer now support inclusive `heights` ranges,
+including negative Y values, disjoint ranges and legacy `minHeight` / `maxHeight`.
+For example, `heights=(-64)-(-1) 64-128 200`. Ranges combine with biome, neighbor
+and below-block conditions using AND. Outside a matching range, the normal fallback
+remains visible. Invalid ranges are rejected, never widened to a global replacement.
+Height conditions require **mod 1.7.0** and standard conversion mode. Endpoints
+are limited to -32768 through 32767; duplicate, overlapping and adjacent ranges
+are normalized. Explicit `heights` takes precedence over the legacy pair.
+
+The pack creator adds both 7-tile horizontal/vertical hybrid methods, static
+repeat grids from 1×1 to 8×8, and weighted random variants. Random weights are
+positive integers (1–1000); the simplified ratio must total at most 64 atlas slots.
+Repeat animation is currently unsupported and the creator rejects it rather than
+silently freezing an animation. All new settings persist in editable drafts.
+
+Automated regressions cover all eight copper-grate variants, OptiFine compact and
+Fusion horizontal layouts, source fallback pixels, transparent holes, negative-height
+boundaries, gaps, animated condition paths, and native fallback selection. These are
+conversion and host-renderer checks; actual grate rendering and chunk updates on
+Minecraft 1.26.60/1.26.62 still need in-game verification.
 
 **Sandstone variant compatibility (1.6.2):** bundled and newly converted resources
 write base sandstone before its chiseled, cut and smooth variants, with explicit

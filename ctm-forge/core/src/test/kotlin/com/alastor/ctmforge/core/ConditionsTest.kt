@@ -148,6 +148,26 @@ class ConditionsTest {
         assertFailsWith<IllegalArgumentException> { build(fire.copy(belowBlocks = "unknown_block")) }
     }
 
+    @Test fun heightRangesPreserveNegativeCoordinatesBoundariesAndFallback() {
+        assertEquals(listOf(-64..0, 64..128, 200..200), RuleConditions.heightRanges("200 64-128 (-64)-(-1) 0"))
+        assertEquals(listOf(-10..30), RuleConditions.heightRanges("", "-10", "30"))
+        assertEquals(listOf(0..32767), RuleConditions.heightRanges("", "0", ""))
+        assertEquals(listOf(1..2), RuleConditions.heightRanges("1-2", "3", "4"))
+        for (invalid in listOf("64-0", "(-64)-(-1", "1_2", "abc", "-32769", "32768", "0--1"))
+            assertFailsWith<IllegalArgumentException>(invalid) { RuleConditions.heightRanges(invalid) }
+        val result = build(rule.copy(block = "copper_grate", heights = "(-64)-(-1) 64-128", animated = true))
+        assertTrue(result.sheets.all { "/when/h--64_-1.64_128/end/" in it.sheetPath })
+        for (variants in variations(result)) {
+            assertTrue("/fallback/" in variants[0].jsonObject.getValue("path").jsonPrimitive.content)
+            assertTrue(variants.all { it.jsonObject.getValue("path").jsonPrimitive.content + ".png" in result.files })
+        }
+        val flips = result.files.getValue("textures/flipbook_textures.json").decodeToString()
+        assertTrue("/when/h--64_-1.64_128/end/anim/" in flips)
+        // Equivalent overlapping input canonicalizes to the same predicate.
+        assertFailsWith<IllegalArgumentException> { build(rule.copy(heights = "0-10"), rule.copy(heights = "0-5 5-10")) }
+        assertEquals(2, build(rule.copy(heights = "0-10"), rule.copy(heights = "11-20")).methods.getValue("fixed"))
+    }
+
     @Test fun validatesNamesAndCanonicalizesBlockAndBiomeAliases() {
         val c = RuleConditions.parse("minecraft:snowy_plains, desert", "grass_block minecraft:glass", "sand")
         assertEquals(listOf("desert", "ice_plains", "snowy_plains"), c.biomes)
@@ -176,6 +196,11 @@ class ConditionsTest {
         assertTrue(direct.log.any { "require standard mode" in it })
         val belowDirect = assertFailsWith<ConversionException> { Converter.convert(pack("ctmforge.belowBlocks=end_stone"), ConvertOptions(direct = true)) }
         assertTrue(belowDirect.log.any { "require standard mode" in it })
+        assertTrue(Converter.convert(pack("minHeight=-20\nmaxHeight=40"), ConvertOptions()).sheets.all {
+            "/when/h--20_40/end/" in it.sheetPath
+        })
+        assertFailsWith<ConversionException> { Converter.convert(pack("heights=0-64"), ConvertOptions(direct = true)) }
+        assertFailsWith<ConversionException> { Converter.convert(pack("heights=64-0"), ConvertOptions()) }
         val invalid = assertFailsWith<ConversionException> { Converter.convert(pack("connectBlocks=not_a_block"), ConvertOptions()) }
         assertTrue(invalid.log.any { "Unknown connection block" in it })
     }

@@ -112,6 +112,18 @@ static void unitTests() {
     CHECK(selectTile(customSheet, kFaceFrames[3], {0, 0, 0}, neighbor) == 0);
     CHECK(selectTile(customSheet, kFaceFrames[2], {0, 0, 0}, neighbor) == 2);
 
+    // Height boundaries, gaps, animation paths and all five simultaneous conditions.
+    const auto heights = parseConditions("when/h--64_-1.64_128.200_200/end/anim/grate");
+    CHECK(heights.valid && heights.conditional());
+    for (int y : {-64, -1, 64, 128, 200}) CHECK(conditionsMatch(heights, "", touchingStone, y));
+    for (int y : {-65, 0, 63, 129, 199, 201}) CHECK(!conditionsMatch(heights, "", touchingStone, y));
+    CHECK(!conditionsMatch(heights, "", touchingStone)); // no world Y fails closed
+    CHECK(parseConditions("when/b-desert/c-glass/n-sand/d-end_stone/h--64_128/end/x").valid);
+    for (const char* bad : {"when/h-/end/x", "when/h-1_0/end/x", "when/h-0_1./end/x",
+             "when/h-0_1..2_3/end/x", "when/h-0_1_2/end/x", "when/h-0_32768/end/x",
+             "when/h--32769_0/end/x", "when/h-0_99999999999999/end/x", "when/h-0_1/h-2_3/end/x"})
+        CHECK(!parseConditions(bad).valid);
+
     // tile rects
     SheetSpec c{Method::Ctm, 8, 6, 47, false};
     UvRect r = tileRect(c, 9, {0.f, 0.f, 0.8f, 0.6f});

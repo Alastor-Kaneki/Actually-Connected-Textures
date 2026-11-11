@@ -116,7 +116,11 @@ object Converter {
     fun javaToBedrockTexture(name: String): String? = Bedrock.glassTexture(name)
 
     /** Java texture a block's main faces use (panes use their glass texture). */
-    private fun mainJavaTexture(block: String) = if (block.endsWith("_pane")) block.dropLast(5) else block
+    private fun mainJavaTexture(block: String) = when {
+        block.startsWith("waxed_") && block.removePrefix("waxed_") in JavaNames.textures -> block.removePrefix("waxed_")
+        block.endsWith("_pane") -> block.dropLast(5)
+        else -> block
+    }
 
     private fun isPane(block: String) = block.endsWith("glass_pane")
 
@@ -322,21 +326,24 @@ object Converter {
                 var blocks = blockNames(props["matchBlocks"] ?: "")
                 var textures = emptyList<String>()
                 if (blocks.isEmpty() && !props["matchTiles"].isNullOrEmpty()) textures = tileNames(props.getValue("matchTiles"))
-                if (blocks.isEmpty() && textures.isEmpty()) {
+                if ("matchBlocks" !in props && "matchTiles" !in props) {
                     val stem = path.substringAfterLast('/').removeSuffix(".properties")
                     if (stem.startsWith("block_")) blocks = listOf(stem.removePrefix("block_"))
+                    else textures = tileNames(stem)
+                    log += "note $path: inferred ${if (blocks.isNotEmpty()) "matchBlocks=${stem.removePrefix("block_")}" else "matchTiles=$stem"} from filename"
                 }
                 val faces = LinkedHashSet<String>()
                 // OptiFine separates faces with spaces or commas ("faces=north,south,east,west")
                 for (f in listItems(props["faces"] ?: "all")) faces += OPTIFINE_FACES[f.lowercase()] ?: emptySet()
-                for (unsupported in listOf("heights", "minHeight", "maxHeight", "metadata", "name")) {
+                for (unsupported in listOf("metadata", "name")) {
                     if (unsupported in props) log += "note $path: '$unsupported' is ignored"
                 }
                 val r = Rule(path, props, method, blocks, faces.ifEmpty { FACE_NAMES.toSet() }, textures = textures)
                 r.overlay = overlay
                 r.conditions = try {
                     RuleConditions.parse(props["biomes"] ?: "", props["connectBlocks"] ?: "",
-                        props["ctmforge.neighborBlocks"] ?: "", props["ctmforge.belowBlocks"] ?: "")
+                        props["ctmforge.neighborBlocks"] ?: "", props["ctmforge.belowBlocks"] ?: "",
+                        props["heights"] ?: "", props["minHeight"] ?: "", props["maxHeight"] ?: "")
                 } catch (e: IllegalArgumentException) {
                     log += "skip $path: ${e.message}"
                     continue

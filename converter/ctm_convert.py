@@ -113,6 +113,8 @@ def bedrock_block(java_id: str) -> str | None:
 
 def main_java_texture(block: str) -> str:
     """Java texture a block's main faces use (panes use their glass texture)."""
+    if block.startswith("waxed_") and block[len("waxed_"):] in JAVA_TEXTURES:
+        return block[len("waxed_"):]
     return block[: -len("_pane")] if block.endswith("_pane") else block
 
 
@@ -585,10 +587,11 @@ class RuleConditions:
     connect_blocks: list[str] = field(default_factory=list)
     neighbor_blocks: list[str] = field(default_factory=list)
     below_blocks: list[str] = field(default_factory=list)
+    heights: list[tuple[int, int]] = field(default_factory=list)
 
     @property
     def conditional(self):
-        return bool(self.biomes or self.neighbor_blocks or self.below_blocks)
+        return bool(self.biomes or self.neighbor_blocks or self.below_blocks or self.heights)
 
     @property
     def path(self):
@@ -601,10 +604,41 @@ class RuleConditions:
             parts.append("n-" + ".".join(self.neighbor_blocks))
         if self.below_blocks:
             parts.append("d-" + ".".join(self.below_blocks))
+        if self.heights:
+            parts.append("h-" + ".".join(f"{lo}_{hi}" for lo, hi in self.heights))
         return "when/" + "/".join(parts) + "/end/" if parts else ""
 
 
-def rule_conditions(biomes="", connect_blocks="", neighbor_blocks="", below_blocks=""):
+def height_ranges(value="", minimum="", maximum=""):
+    """OptiFine inclusive Y ranges; canonicalized for bounded, allocation-free runtime tests."""
+    ranges = []
+    if value.strip():
+        for token in re.split(r"[\s,]+", value.strip()):
+            m = re.fullmatch(r"(\(-?\d+\)|-?\d+)(?:-(\(-?\d+\)|-?\d+))?", token)
+            if not m:
+                raise ValueError("Invalid heights: use 0-64, (-64)-(-1), or single Y values.")
+            lo = int(m[1].strip("()"))
+            hi = int((m[2] or m[1]).strip("()"))
+            ranges.append((lo, hi))
+    elif minimum.strip() or maximum.strip():
+        try:
+            ranges.append((int(minimum.strip() or "-32768"), int(maximum.strip() or "32767")))
+        except ValueError:
+            raise ValueError("minHeight and maxHeight must be whole numbers.") from None
+    merged = []
+    for lo, hi in sorted(ranges):
+        if not -32768 <= lo <= hi <= 32767:
+            raise ValueError("Heights must be ordered inclusive ranges within -32768 to 32767.")
+        if merged and lo <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(hi, merged[-1][1]))
+        else:
+            merged.append((lo, hi))
+    if len(".".join(f"{lo}_{hi}" for lo, hi in merged)) > 200:
+        raise ValueError("Too many height ranges; use fewer ranges per rule.")
+    return merged
+
+
+def rule_conditions(biomes="", connect_blocks="", neighbor_blocks="", below_blocks="", heights="", min_height="", max_height=""):
     aliases = {'snowy_plains': 'ice_plains', 'snowy_taiga': 'cold_taiga', 'old_growth_pine_taiga': 'mega_taiga', 'old_growth_spruce_taiga': 'redwood_taiga_mutated', 'old_growth_birch_forest': 'birch_forest_mutated', 'windswept_hills': 'extreme_hills', 'windswept_forest': 'extreme_hills_plus_trees', 'windswept_gravelly_hills': 'extreme_hills_mutated', 'snowy_beach': 'cold_beach', 'stony_shore': 'stone_beach', 'sparse_jungle': 'jungle_edge', 'badlands': 'mesa', 'wooded_badlands': 'mesa_plateau_stone', 'eroded_badlands': 'mesa_bryce', 'windswept_savanna': 'savanna_mutated', 'swamp': 'swampland', 'mushroom_fields': 'mushroom_island', 'dark_forest': 'roofed_forest', 'nether_wastes': 'hell', 'the_end': 'sky'}
     def names(value):
         result = []
@@ -629,7 +663,8 @@ def rule_conditions(biomes="", connect_blocks="", neighbor_blocks="", below_bloc
             result.extend(java for java, bedrock in JAVA_BLOCKS.items() if bedrock == block and java not in VANILLA_BLOCKS)
         return sorted(set(result))
     expanded = sorted(set(biome_names + [aliases[n] for n in biome_names if n in aliases]))
-    result = RuleConditions(expanded, exclude, blocks(connect_blocks), blocks(neighbor_blocks), blocks(below_blocks))
+    result = RuleConditions(expanded, exclude, blocks(connect_blocks), blocks(neighbor_blocks), blocks(below_blocks),
+                            height_ranges(heights, min_height, max_height))
     if any(len(".".join(v)) > 200 for v in (result.biomes, result.connect_blocks, result.neighbor_blocks, result.below_blocks)) or len(result.path) > 500:
         raise ValueError("Condition lists are too long. Use fewer names per rule.")
     return result
@@ -760,21 +795,25 @@ def read_rules(pack: JavaPack, log: list[str]) -> list[Rule]:
         textures = []
         if not blocks and props.get("matchTiles"):
             textures = tile_names(props["matchTiles"])
-        if not blocks and not textures:
+        if "matchBlocks" not in props and "matchTiles" not in props:
             stem = path.rsplit("/", 1)[-1][:-len(".properties")]
             if stem.startswith("block_"):
                 blocks = [stem[len("block_"):]]
+            else:
+                textures = tile_names(stem)
+            log.append(f"note {path}: inferred {'matchBlocks' if blocks else 'matchTiles'}={stem.removeprefix('block_') if blocks else stem} from filename")
         faces = set()
         for f in re.split(r"[\s,]+", props.get("faces", "all")):  # OptiFine allows spaces or commas
             faces |= OPTIFINE_FACES.get(f.lower(), set())
-        for unsupported in ("heights", "minHeight", "maxHeight", "metadata", "name"):
+        for unsupported in ("metadata", "name"):
             if unsupported in props:
                 log.append(f"note {path}: '{unsupported}' is ignored")
         r = Rule(path, props, method, blocks, faces or set(FACE_NAMES), pack=pack, textures=textures)
         r.overlay = overlay
         try:
             r.conditions = rule_conditions(props.get("biomes", ""), props.get("connectBlocks", ""),
-                                           props.get("ctmforge.neighborBlocks", ""), props.get("ctmforge.belowBlocks", ""))
+                                           props.get("ctmforge.neighborBlocks", ""), props.get("ctmforge.belowBlocks", ""),
+                                           props.get("heights", ""), props.get("minHeight", ""), props.get("maxHeight", ""))
         except ValueError as e:
             log.append(f"skip {path}: {e}")
             continue

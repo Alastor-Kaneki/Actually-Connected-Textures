@@ -218,7 +218,7 @@ struct RuleContext {
                 status(line.c_str());
             }
             return match;
-        });
+        }, pos.y);
     }
 };
 
