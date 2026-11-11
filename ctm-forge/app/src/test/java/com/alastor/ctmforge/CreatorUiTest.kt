@@ -38,10 +38,13 @@ class CreatorUiTest {
         compose.onNodeWithText("Only when touching (optional)").performTextReplacement("sand")
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Only when on (optional)"))
         compose.onNodeWithText("Only when on (optional)").performTextReplacement("end_stone purpur_pillar")
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Y heights (optional)"))
+        compose.onNodeWithText("Y heights (optional)").performTextReplacement("64-128")
         compose.waitUntil(10000) { vm.creator.pendingSaves == 0 }
         val p = vm.creator.project!!
         assertEquals("desert plains", p.rules.first().biomes)
         assertEquals("end_stone purpur_pillar", p.rules.first().belowBlocks)
+        assertEquals("64-128", p.rules.first().heights)
         val texture = CreatorTexture("test.png", 16, 1)
         vm.creator.store.asset(p.id, texture.asset).writeBytes(Png.encode(Img(16, 16, IntArray(256) { 0xff7700aa.toInt() })))
         compose.runOnUiThread { vm.creator.editRule(p.rules.first().id) { it.copy(tiles = listOf(texture)) } }
@@ -99,7 +102,8 @@ class CreatorUiTest {
         val p = CreatorProject(name = "Animated", rules = listOf(CreatorRule(method = CreatorMethod.COMPACT,
             tiles = List(5) { CreatorTexture("$it.png", 32, 3) }, animated = true, ticks = "4", order = "0,1,2,1",
             interpolate = true, innerSeams = true, faces = "sides",
-            biomes = "!desert", connectBlocks = "glass tinted_glass", neighborBlocks = "sand", belowBlocks = "end_stone")))
+            biomes = "!desert", connectBlocks = "glass tinted_glass", neighborBlocks = "sand", belowBlocks = "end_stone", heights = "(-64)-(-1) 64-128",
+            repeatWidth = 3, repeatHeight = 2, weights = "4 1 1 2 1")))
         val store = CreatorStore(compose.activity)
         store.save(p)
         assertEquals(p, store.read(p.id))

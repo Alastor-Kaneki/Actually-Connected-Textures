@@ -122,6 +122,26 @@ class ConditionalPacks(unittest.TestCase):
             self.assertEqual((255, 120, 0, 255), Image.open(io.BytesIO(files[base + ".png"])).getpixel((0, 0)))
             self.assertNotIn("textures/flipbook_textures.json", files)
 
+    def test_height_ranges_and_fallback(self):
+        self.assertEqual([(-64, 0), (64, 128), (200, 200)], ctm.height_ranges("200 64-128 (-64)-(-1) 0"))
+        self.assertEqual([(-10, 30)], ctm.height_ranges("", "-10", "30"))
+        self.assertEqual([(0, 32767)], ctm.height_ranges("", "0", ""))
+        self.assertEqual([(1, 2)], ctm.height_ranges("1-2", "3", "4"))
+        for invalid in ("64-0", "(-64)-(-1", "1_2", "abc", "-32769", "32768", "0--1"):
+            with self.assertRaises(ValueError, msg=invalid):
+                ctm.height_ranges(invalid)
+        _, files = self.convert(["heights=(-64)-(-1) 64-128"], block="copper_grate", animated=True)
+        for variants in self.variants(files):
+            self.assertIn("/fallback/", variants[0]["path"])
+            self.assertIn("/when/h--64_-1.64_128/end/", variants[1]["path"])
+            self.assertTrue(all(v["path"] + ".png" in files for v in variants))
+        flips = json.loads(files["textures/flipbook_textures.json"])
+        self.assertTrue(any("/when/h--64_-1.64_128/end/anim/" in f["flipbook_texture"] for f in flips))
+        with self.assertRaises(SystemExit): self.convert(["heights=0-64"], direct=True)
+        with self.assertRaises(SystemExit): self.convert(["heights=64-0"])
+        _, legacy = self.convert(["minHeight=-20\nmaxHeight=40"])
+        self.assertIn("/when/h--20_40/end/", self.variants(legacy)[0][1]["path"])
+
     def test_names_and_rejection(self):
         self.assertEqual(["sea_lantern", "sealantern"], ctm.rule_conditions(connect_blocks="sea_lantern").connect_blocks)
         self.assertEqual(["snow_layer"], ctm.rule_conditions(connect_blocks="snow").connect_blocks)

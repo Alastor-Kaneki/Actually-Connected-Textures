@@ -1,21 +1,23 @@
 package com.alastor.ctmforge.core
 
-/** Conditions travel with the atlas path and animation strip. Below-block filters require mod 1.4+. */
+/** Conditions travel with the atlas path and animation strip. Below-block filters require mod 1.4+; heights require 1.7+. */
 data class RuleConditions(
     val biomes: List<String> = emptyList(),
     val excludeBiomes: Boolean = false,
     val connectBlocks: List<String> = emptyList(),
     val neighborBlocks: List<String> = emptyList(),
     val belowBlocks: List<String> = emptyList(),
+    val heights: List<IntRange> = emptyList(),
 ) {
-    val conditional get() = biomes.isNotEmpty() || neighborBlocks.isNotEmpty() || belowBlocks.isNotEmpty()
-    val predicateKey get() = "${if (excludeBiomes) "!" else ""}${biomes.joinToString(".")}/${neighborBlocks.joinToString(".")}/${belowBlocks.joinToString(".")}"
+    val conditional get() = biomes.isNotEmpty() || neighborBlocks.isNotEmpty() || belowBlocks.isNotEmpty() || heights.isNotEmpty()
+    val predicateKey get() = "${if (excludeBiomes) "!" else ""}${biomes.joinToString(".")}/${neighborBlocks.joinToString(".")}/${belowBlocks.joinToString(".")}/${heights.joinToString(".") { "${it.first}_${it.last}" }}"
     val path: String get() {
         val parts = buildList {
             if (biomes.isNotEmpty()) add("${if (excludeBiomes) "x" else "b"}-${biomes.joinToString(".")}")
             if (connectBlocks.isNotEmpty()) add("c-${connectBlocks.joinToString(".")}")
             if (neighborBlocks.isNotEmpty()) add("n-${neighborBlocks.joinToString(".")}")
             if (belowBlocks.isNotEmpty()) add("d-${belowBlocks.joinToString(".")}")
+            if (heights.isNotEmpty()) add("h-${heights.joinToString(".") { "${it.first}_${it.last}" }}")
         }
         return if (parts.isEmpty()) "" else "when/${parts.joinToString("/")}/end/"
     }
@@ -41,7 +43,36 @@ data class RuleConditions(
                 id
             }?.distinct()?.sorted() ?: emptyList()
 
-        fun parse(biomes: String = "", connectBlocks: String = "", neighborBlocks: String = "", belowBlocks: String = ""): RuleConditions {
+        fun heightRanges(value: String = "", minimum: String = "", maximum: String = ""): List<IntRange> {
+            val ranges = if (value.isNotBlank()) value.trim().split(Regex("[\\s,]+")).map { token ->
+                val m = Regex("(\\(-?\\d+\\)|-?\\d+)(?:-(\\(-?\\d+\\)|-?\\d+))?").matchEntire(token)
+                require(m != null) { "Invalid heights: use 0-64, (-64)-(-1), or single Y values." }
+                val lo = m.groupValues[1].trim('(', ')').toIntOrNull()
+                val hi = m.groupValues[2].ifEmpty { m.groupValues[1] }.trim('(', ')').toIntOrNull()
+                require(lo != null && hi != null) { "Height value is too large." }
+                lo..hi
+            } else if (minimum.isNotBlank() || maximum.isNotBlank()) {
+                val lo = minimum.trim().ifEmpty { "-32768" }.toIntOrNull()
+                val hi = maximum.trim().ifEmpty { "32767" }.toIntOrNull()
+                require(lo != null && hi != null) { "minHeight and maxHeight must be whole numbers." }
+                listOf(lo..hi)
+            } else emptyList()
+            val merged = mutableListOf<IntRange>()
+            for (range in ranges.sortedWith(compareBy({ it.first }, { it.last }))) {
+                require(range.first >= -32768 && range.last <= 32767 && !range.isEmpty()) {
+                    "Heights must be ordered inclusive ranges within -32768 to 32767."
+                }
+                val previous = merged.lastOrNull()
+                if (previous != null && range.first <= previous.last + 1)
+                    merged[merged.lastIndex] = previous.first..maxOf(previous.last, range.last)
+                else merged += range
+            }
+            require(merged.joinToString(".") { "${it.first}_${it.last}" }.length <= 200) { "Too many height ranges; use fewer ranges per rule." }
+            return merged
+        }
+
+        fun parse(biomes: String = "", connectBlocks: String = "", neighborBlocks: String = "", belowBlocks: String = "",
+                  heights: String = "", minHeight: String = "", maxHeight: String = ""): RuleConditions {
             val value = biomes.trim()
             val exclude = value.startsWith('!')
             val biomeNames = names(if (exclude) value.drop(1) else value)
@@ -54,7 +85,7 @@ data class RuleConditions(
                 listOf(id.lowercase()) + JavaNames.blocks.filter { (java, bedrock) -> bedrock == id && java !in Vanilla.blocks }.keys
             }.distinct().sorted()
             val result = RuleConditions(biomeNames.flatMap { listOfNotNull(it, biomeAliases[it]) }.distinct().sorted(),
-                exclude, blocks(connectBlocks), blocks(neighborBlocks), blocks(belowBlocks))
+                exclude, blocks(connectBlocks), blocks(neighborBlocks), blocks(belowBlocks), heightRanges(heights, minHeight, maxHeight))
             require(listOf(result.biomes, result.connectBlocks, result.neighborBlocks, result.belowBlocks).all { it.joinToString(".").length <= 200 }
                 && result.path.length <= 500) { "Condition lists are too long. Use fewer names per rule." }
             return result

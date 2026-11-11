@@ -16,7 +16,8 @@ natively, CurseForge and Planet Minecraft in the built-in browser, or open a .zi
 
 Open **Create → New pack**. Name the pack, choose a vanilla block ID and faces,
 then select single texture, 5-tile compact CTM, 47-tile CTM, horizontal/vertical
-connections, or 1–16 random variants. Import each tile or select a complete set
+connections, either 7-tile horizontal/vertical hybrid, a static repeat grid up to
+8×8, or 1–16 random variants with optional relative weights. Import each tile or select a complete set
 of PNGs in one operation (natural filename order: 0, 1, …, 10).
 
 Enable **Animated textures** for custom animations. Import a vertical strip of
@@ -25,6 +26,13 @@ square frames, or use **Assemble separate PNG frames**. Set ticks per frame
 and frame blending. Animated tiles in a rule share timing and frame count;
 static tiles can be mixed in. Each tile has a play/pause preview. Turning animation
 off uses its first frame, while retaining the imported strip in the draft.
+
+Open **Biome & neighbor rules** to combine biomes, touching blocks, blocks underneath,
+and inclusive Y-height ranges. Example: `(-64)-(-1) 64-128` applies underground or
+between Y 64 and 128. Height filters require bundled mod 1.7.0; unmatched locations
+retain their base texture. Use separate rules for alternatives. Invalid ranges
+fail validation. Repeat patterns use row-major tile order and currently require
+static tiles. Weighted random ratios are reduced and must total at most 64 slots.
 
 PNGs must have a power-of-two width from 8 to 256 pixels, with up to 64 frames.
 The builder checks missing tiles, unsupported blocks, overlapping faces and

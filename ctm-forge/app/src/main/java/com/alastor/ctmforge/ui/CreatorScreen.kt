@@ -152,7 +152,7 @@ private fun RuleEditor(c: CreatorController, rule: CreatorRule, number: Int, pic
                     edit { it.withMethod(CreatorMethod.entries.first { m -> m.label == label }) }
                 }
                 CreatorChoice("Faces", rule.faces, PackCreator.faceOptions, !c.busy) { value -> edit { it.copy(faces = value) } }
-                var conditionsExpanded by remember(rule.id) { mutableStateOf(rule.biomes.isNotBlank() || rule.connectBlocks.isNotBlank() || rule.neighborBlocks.isNotBlank() || rule.belowBlocks.isNotBlank()) }
+                var conditionsExpanded by remember(rule.id) { mutableStateOf(rule.biomes.isNotBlank() || rule.connectBlocks.isNotBlank() || rule.neighborBlocks.isNotBlank() || rule.belowBlocks.isNotBlank() || rule.heights.isNotBlank()) }
                 TextButton(onClick = { conditionsExpanded = !conditionsExpanded }) { Text("Biome & neighbor rules ${if (conditionsExpanded) "▾" else "▸"}") }
                 if (conditionsExpanded) {
                     OutlinedTextField(rule.biomes, { value -> edit { it.copy(biomes = value.take(400)) } }, label = { Text("Biomes (optional)") },
@@ -164,12 +164,27 @@ private fun RuleEditor(c: CreatorController, rule: CreatorRule, number: Int, pic
                         placeholder = { Text("sand gravel") }, enabled = !c.busy, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(rule.belowBlocks, { value -> edit { it.copy(belowBlocks = value.take(400)) } }, label = { Text("Only when on (optional)") },
                         placeholder = { Text("end_stone purpur_block") }, enabled = !c.busy, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(rule.heights, { value -> edit { it.copy(heights = value.take(400)) } }, label = { Text("Y heights (optional)") },
+                        placeholder = { Text("(-64)-(-1) 64-128 200") }, enabled = !c.busy, modifier = Modifier.fillMaxWidth())
+                    Text("Height ranges include both endpoints and require Connected Textures 1.7+. Outside a matching range the fallback remains visible.", style = MaterialTheme.typography.bodySmall)
                     Text("Touching checks all six neighboring blocks. On checks only the block directly underneath. All filled conditions must match; use separate rules for alternatives. The first matching conditional rule wins; an unfiltered rule is the fallback. On requires Connected Textures 1.4 or newer.", style = MaterialTheme.typography.bodySmall)
                 }
                 if (rule.method == CreatorMethod.RANDOM) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { edit { it.copy(tiles = it.tiles.dropLast(1)) } }, enabled = !c.busy && rule.tiles.size > 1) { Text("−") }
                     Text("${rule.tiles.size} variants", modifier = Modifier.padding(top = 12.dp))
                     TextButton(onClick = { edit { it.copy(tiles = it.tiles + listOf(null)) } }, enabled = !c.busy && rule.tiles.size < 16) { Text("+") }
+                }
+                if (rule.method == CreatorMethod.REPEAT) {
+                    CreatorChoice("Pattern width", rule.repeatWidth.toString(), (1..8).map { it.toString() }, !c.busy) { value ->
+                        edit { it.withRepeatSize(value.toInt(), it.repeatHeight) }
+                    }
+                    CreatorChoice("Pattern height", rule.repeatHeight.toString(), (1..8).map { it.toString() }, !c.busy) { value ->
+                        edit { it.withRepeatSize(it.repeatWidth, value.toInt()) }
+                    }
+                }
+                if (rule.method == CreatorMethod.RANDOM) {
+                    OutlinedTextField(rule.weights, { value -> edit { it.copy(weights = value.take(160)) } }, label = { Text("Tile weights (optional)") },
+                        placeholder = { Text("4 1 1 2 · blank gives equal chances") }, enabled = !c.busy, modifier = Modifier.fillMaxWidth())
                 }
                 if (rule.method in listOf(CreatorMethod.COMPACT, CreatorMethod.CTM)) {
                     CreatorToggle("Keep inner seams", rule.innerSeams, !c.busy) { value -> edit { it.copy(innerSeams = value) } }
@@ -179,11 +194,14 @@ private fun RuleEditor(c: CreatorController, rule: CreatorRule, number: Int, pic
                     CreatorMethod.CTM -> "Use OptiFine's standard tile order, 0–46."
                     CreatorMethod.HORIZONTAL -> "Tile order: 0 right connection, 1 both, 2 left connection, 3 isolated."
                     CreatorMethod.VERTICAL -> "Tile order: 0 above connection, 1 both, 2 below connection, 3 isolated."
-                    CreatorMethod.RANDOM -> "Each tile is an equally weighted random variant."
+                    CreatorMethod.RANDOM -> "One weight per tile controls its relative chance. Blank uses equal chances; ratios are simplified automatically."
+                    CreatorMethod.HV -> "Use OptiFine’s 7-tile horizontal + vertical order. Horizontal connections take priority."
+                    CreatorMethod.VH -> "Use OptiFine’s 7-tile vertical + horizontal order. Vertical connections take priority."
+                    CreatorMethod.REPEAT -> "Import tiles row by row, left to right. The pattern repeats at world coordinates. Static tiles only."
                     CreatorMethod.FIXED -> "One custom texture on the selected block faces."
                 }, style = MaterialTheme.typography.bodySmall)
                 if (rule.tiles.size > 1) OutlinedButton(onClick = { pick(0, "tiles") }, enabled = !c.busy) { Text("Import ${rule.tiles.size} tile PNGs") }
-                CreatorToggle("Animated textures", rule.animated, !c.busy) { value -> edit { it.copy(animated = value) } }
+                CreatorToggle("Animated textures", rule.animated, !c.busy && rule.method != CreatorMethod.REPEAT) { value -> edit { it.copy(animated = value) } }
                 if (rule.animated) {
                     OutlinedTextField(rule.ticks, { value -> edit { it.copy(ticks = value.take(3)) } }, label = { Text("Ticks per frame (20 = 1 second)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, enabled = !c.busy, modifier = Modifier.fillMaxWidth())

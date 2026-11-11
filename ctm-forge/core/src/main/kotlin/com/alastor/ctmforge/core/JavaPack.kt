@@ -15,7 +15,18 @@ import java.util.zip.ZipInputStream
  */
 class JavaPack private constructor(val files: Map<String, ByteArray>, val root: String, val overlays: List<String>) {
 
-    fun get(path: String): ByteArray? = files[path]
+    // Keep exact spellings; collisions differing only in case cannot be guessed.
+    private val casePaths: Map<String, String?> by lazy {
+        val index = HashMap<String, String?>()
+        for (path in files.keys) {
+            val key = path.lowercase()
+            index[key] = if (index.containsKey(key)) null else path
+        }
+        index
+    }
+
+    fun resolvePath(path: String): String? = if (path in files) path else casePaths[path.lowercase()]
+    fun get(path: String): ByteArray? = resolvePath(path)?.let { files[it] }
 
     /** OptiFine/MCPatcher CTM rule files. */
     val ctmRuleCount: Int

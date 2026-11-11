@@ -24,6 +24,19 @@ class PackCreatorTest {
             assertEquals(result.files.keys, JavaPack.readZip(result.mcpackBytes().inputStream()).keys)
         }
     }
+    @Test fun repeatDimensionsAndRandomWeightsArePreserved() {
+        val repeated = rule(CreatorMethod.REPEAT).withRepeatSize(3, 2).copy(tiles = List(6) { CreatorTexture("$it.png", 16, 1) })
+        assertEquals("repeat-3x2-6", build(repeated).blocks["glass"])
+        val weighted = rule(CreatorMethod.RANDOM).copy(weights = "40 10 10 20")
+        assertEquals(listOf(4, 1, 1, 2), PackCreator.randomWeights(weighted))
+        assertEquals("random-8x1-8", build(weighted).blocks["glass"])
+        for (bad in listOf("1 2", "0 1 1 1", "-1 1 1 1", "1000 1 1 1", "oops"))
+            assertFailsWith<IllegalArgumentException> { build(weighted.copy(weights = bad)) }
+        assertFailsWith<IllegalArgumentException> { build(repeated.copy(animated = true)) }
+        assertFailsWith<IllegalArgumentException> { build(repeated.copy(repeatWidth = 9)) }
+        assertFalse(rule(frames = 2).withMethod(CreatorMethod.REPEAT).animated)
+    }
+
     @Test fun animationTimingAndPixelsSurviveExport() {
         val result = build(rule(frames = 3).copy(order = "2,0,1,0", ticks = "3", interpolate = true))
         val flip = Json.parseToJsonElement(result.files.getValue("textures/flipbook_textures.json").decodeToString()).jsonArray

@@ -1,13 +1,15 @@
 // Path-encoded rule conditions. No allocation, game types or global state.
 #pragma once
 #include <string_view>
+#include <charconv>
+#include <limits>
 
 namespace ctm {
 struct Conditions {
-    std::string_view biomes, connections, neighbors, below;
+    std::string_view biomes, connections, neighbors, below, heights;
     bool excludeBiomes = false;
     bool valid = true;
-    bool conditional() const { return !biomes.empty() || !neighbors.empty() || !below.empty(); }
+    bool conditional() const { return !biomes.empty() || !neighbors.empty() || !below.empty() || !heights.empty(); }
 };
 
 inline std::string_view bareName(std::string_view name) {
@@ -47,15 +49,38 @@ inline bool validNameList(std::string_view list) {
     return true;
 }
 
+// Inclusive, bounded height intervals encoded as lo_hi.lo_hi. No allocations.
+inline bool heightEndpoint(std::string_view value, int& out) {
+    if (value.empty()) return false;
+    const auto result = std::from_chars(value.data(), value.data() + value.size(), out);
+    return result.ec == std::errc{} && result.ptr == value.data() + value.size() && out >= -32768 && out <= 32767;
+}
+inline bool heightRangesMatch(std::string_view list, int y, bool validateOnly = false) {
+    if (list.empty() || list.size() > 200 || list.back() == '.') return false;
+    bool match = false;
+    while (!list.empty()) {
+        const auto dot = list.find('.');
+        const auto range = list.substr(0, dot);
+        const auto split = range.find('_');
+        int lo = 0, hi = 0;
+        if (split == std::string_view::npos || !heightEndpoint(range.substr(0, split), lo) ||
+            !heightEndpoint(range.substr(split + 1), hi) || lo > hi) return false;
+        match = match || (y >= lo && y <= hi);
+        if (dot == std::string_view::npos) break;
+        list.remove_prefix(dot + 1);
+    }
+    return validateOnly || match;
+}
+
 // Optional suffix after the sheet-spec directory:
-// when/b-desert.plains/c-glass.tinted_glass/n-sand/d-end_stone/end/<image>
+// when/b-desert.plains/c-glass.tinted_glass/n-sand/d-end_stone/h--64_128/end/<image>
 // x- excludes the listed biomes. Malformed/unknown conditions fail closed.
 inline Conditions parseConditions(std::string_view rest) {
     Conditions out;
     if (rest.substr(0, 5) != "when/") return out;
     rest.remove_prefix(5);
     out.valid = false;
-    for (int part = 0; part < 5; ++part) {
+    for (int part = 0; part < 6; ++part) {
         const auto slash = rest.find('/');
         if (slash == std::string_view::npos) return out;
         const auto segment = rest.substr(0, slash);
@@ -64,7 +89,8 @@ inline Conditions parseConditions(std::string_view rest) {
             out.valid = !rest.empty() && part > 0;
             return out;
         }
-        if (segment.size() < 3 || segment[1] != '-' || !validNameList(segment.substr(2))) return out;
+        if (segment.size() < 3 || segment[1] != '-') return out;
+        if (segment[0] == 'h' ? !heightRangesMatch(segment.substr(2), 0, true) : !validNameList(segment.substr(2))) return out;
         const auto names = segment.substr(2);
         switch (segment[0]) {
         case 'b': case 'x':
@@ -73,6 +99,7 @@ inline Conditions parseConditions(std::string_view rest) {
         case 'c': if (!out.connections.empty()) return out; out.connections = names; break;
         case 'n': if (!out.neighbors.empty()) return out; out.neighbors = names; break;
         case 'd': if (!out.below.empty()) return out; out.below = names; break;
+        case 'h': if (!out.heights.empty()) return out; out.heights = names; break;
         default: return out;
         }
     }
@@ -80,8 +107,8 @@ inline Conditions parseConditions(std::string_view rest) {
 }
 
 template<class NeighborMatch>
-bool conditionsMatch(const Conditions& c, std::string_view biome, NeighborMatch&& neighborMatch) {
-    if (!c.valid) return false;
+bool conditionsMatch(const Conditions& c, std::string_view biome, NeighborMatch&& neighborMatch, int y = std::numeric_limits<int>::max()) {
+    if (!c.valid || (!c.heights.empty() && !heightRangesMatch(c.heights, y))) return false;
     if (!c.biomes.empty()) {
         // Unknown biome must also fail exclusions, never accidentally become a global rule.
         if (biome.empty() || nameInList(c.biomes, biome) == c.excludeBiomes) return false;

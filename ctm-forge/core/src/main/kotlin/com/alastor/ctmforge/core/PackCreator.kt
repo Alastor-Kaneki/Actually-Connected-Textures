@@ -11,6 +11,9 @@ enum class CreatorMethod(val label: String, val property: String, val tileCount:
     HORIZONTAL("Horizontal · 4 tiles", "horizontal", 4),
     VERTICAL("Vertical · 4 tiles", "vertical", 4),
     RANDOM("Random variants", "random", 4),
+    HV("Horizontal + vertical · 7 tiles", "horizontal+vertical", 7),
+    VH("Vertical + horizontal · 7 tiles", "vertical+horizontal", 7),
+    REPEAT("Repeating pattern", "repeat", 4),
 }
 
 data class CreatorTexture(val asset: String, val size: Int, val frames: Int)
@@ -30,8 +33,18 @@ data class CreatorRule(
     val connectBlocks: String = "",
     val neighborBlocks: String = "",
     val belowBlocks: String = "",
+    val heights: String = "",
+    val repeatWidth: Int = 2,
+    val repeatHeight: Int = 2,
+    val weights: String = "",
 ) {
-    fun withMethod(value: CreatorMethod) = copy(method = value, tiles = List(value.tileCount) { tiles.getOrNull(it) })
+    fun withMethod(value: CreatorMethod) = copy(method = value,
+        animated = animated && value != CreatorMethod.REPEAT,
+        tiles = List(if (value == CreatorMethod.REPEAT) repeatWidth * repeatHeight else value.tileCount) { tiles.getOrNull(it) })
+    fun withRepeatSize(width: Int, height: Int): CreatorRule {
+        require(width in 1..8 && height in 1..8)
+        return copy(repeatWidth = width, repeatHeight = height, tiles = List(width * height) { tiles.getOrNull(it) })
+    }
 }
 
 data class CreatorProject(
@@ -89,6 +102,20 @@ object PackCreator {
         }
     }
 
+    fun randomWeights(rule: CreatorRule): List<Int> {
+        if (rule.weights.isBlank()) return List(rule.tiles.size) { 1 }
+        val values = rule.weights.trim().split(Regex("[\\s,]+")).map { it.toIntOrNull() }
+        require(values.size == rule.tiles.size && values.all { it != null && it in 1..1000 }) {
+            "Give each random tile a positive weight from 1 to 1000."
+        }
+        fun gcd(a: Int, b: Int): Int = if (b == 0) a else gcd(b, a % b)
+        val weights = values.map { it!! }
+        val divisor = weights.reduce(::gcd)
+        return weights.map { it / divisor }.also {
+            require(it.sum() <= 64) { "Simplified weights must total at most 64. Use simpler ratios." }
+        }
+    }
+
     private fun faces(value: String): Set<String> = when (value) {
         "all" -> Bedrock.FACES.toSet()
         "sides" -> Bedrock.SIDES
@@ -116,11 +143,20 @@ object PackCreator {
                 require(block in blocks) { "Choose a supported vanilla block ID." }
                 require(rule.faces in faceOptions) { "Choose valid faces." }
                 val bedrock = Bedrock.block(block)!!
-                val conditions = RuleConditions.parse(rule.biomes, rule.connectBlocks, rule.neighborBlocks, rule.belowBlocks)
+                val conditions = RuleConditions.parse(rule.biomes, rule.connectBlocks, rule.neighborBlocks, rule.belowBlocks, rule.heights)
                 faces(rule.faces).forEach { f ->
-                    require(occupied.add(Triple(bedrock, f, conditions.predicateKey))) { "Another rule already covers $f on $bedrock. Choose different faces or biome/neighbor conditions." }
+                    require(occupied.add(Triple(bedrock, f, conditions.predicateKey))) { "Another rule already covers $f on $bedrock. Choose different faces or biome/neighbor/height conditions." }
                 }
-                require(if (rule.method == CreatorMethod.RANDOM) rule.tiles.size in 1..16 else rule.tiles.size == rule.method.tileCount) { "Wrong number of tiles for this method." }
+                require(rule.repeatWidth in 1..8 && rule.repeatHeight in 1..8) { "Repeat width and height must be between 1 and 8." }
+                val requiredTiles = if (rule.method == CreatorMethod.REPEAT) rule.repeatWidth * rule.repeatHeight else rule.method.tileCount
+                require(if (rule.method == CreatorMethod.RANDOM) rule.tiles.size in 1..16 else rule.tiles.size == requiredTiles) { "Wrong number of tiles for this method." }
+                require(rule.method != CreatorMethod.REPEAT || !rule.animated) { "Repeating patterns currently support static tiles only. Turn animation off." }
+                val weights = if (rule.method == CreatorMethod.RANDOM) randomWeights(rule) else emptyList()
+                val outputTiles = when (rule.method) {
+                    CreatorMethod.COMPACT -> 47
+                    CreatorMethod.RANDOM -> weights.sum()
+                    else -> rule.tiles.size
+                }
                 require(rule.tiles.all { it != null }) { "Import every tile before building." }
                 val images = rule.tiles.map { tile ->
                     tile!!
@@ -141,11 +177,9 @@ object PackCreator {
                     order = sequence(rule, counts.single())
                     require(order.toSet().size >= 2) { "Choose at least two different frames, or turn animation off." }
                     require(order.size.toLong() * ticks <= Anim.MAX_TICKS) { "Animation loop is too long. Use fewer frames or shorter timing." }
-                    val outputTiles = if (rule.method == CreatorMethod.COMPACT) 47 else rule.tiles.size
                     val columns = kotlin.math.ceil(kotlin.math.sqrt(outputTiles.toDouble())).toInt()
                     require(columns * images.first().width * order.distinct().size <= Anim.MAX_STRIP_HEIGHT) { "Animated sheet is too tall. Use smaller tiles or fewer frames." }
                 }
-                val outputTiles = if (rule.method == CreatorMethod.COMPACT) 47 else rule.tiles.size
                 val animatedColumns = kotlin.math.ceil(kotlin.math.sqrt(outputTiles.toDouble())).toInt()
                 outputPixels += images.first().width.toLong() * images.first().width *
                     (if (rule.animated) animatedColumns * animatedColumns * order.distinct().size else outputTiles + 7)
@@ -172,6 +206,9 @@ object PackCreator {
                     if (conditions.connectBlocks.isNotEmpty()) append("connectBlocks=${tokens(rule.connectBlocks)}\n")
                     if (conditions.neighborBlocks.isNotEmpty()) append("ctmforge.neighborBlocks=${tokens(rule.neighborBlocks)}\n")
                     if (conditions.belowBlocks.isNotEmpty()) append("ctmforge.belowBlocks=${tokens(rule.belowBlocks)}\n")
+                    if (conditions.heights.isNotEmpty()) append("heights=${tokens(rule.heights)}\n")
+                    if (rule.method == CreatorMethod.REPEAT) append("width=${rule.repeatWidth}\nheight=${rule.repeatHeight}\n")
+                    if (weights.isNotEmpty()) append("weights=${weights.joinToString(" ")}\n")
                 }.toByteArray()
                 if (ri == 0) files["pack.png"] = Png.encode(images.first().firstFrame(), 6)
             } catch (e: IllegalArgumentException) {
