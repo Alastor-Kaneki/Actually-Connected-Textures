@@ -1,0 +1,119 @@
+name: Publish tested v1.6.2
+
+on:
+  push:
+    branches: ["release/publish-v1.6.2"]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-connected-textures-v1.6.2
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN_ID: "42951346983"
+      BUILD_SHA: e2455af53bba9ca99c59f4a7541a3cf45432fb90
+      TARGET_SHA: 9e6548c2d498ddfac3befc7edf1c0e0d68343804
+      MOD_SHA256: 19d95672f643cf2027a1cc41fb8b47d1913ef680e292d3d0fb92200336013c14
+      APK_SHA256: 6f207216ca133137d7270ad0c6dc55bb5b7b362d0d1e2e33a696020b9a74a231
+    steps:
+      - name: Verify tested source
+        run: |
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN_ID" > run.json
+          gh api "repos/$GH_REPO/git/commits/$BUILD_SHA" > build.json
+          gh api "repos/$GH_REPO/git/commits/$TARGET_SHA" > target.json
+          python3 - <<'PY'
+          import json, os
+          run = json.load(open("run.json"))
+          assert run["status"] == "completed" and run["conclusion"] == "success"
+          assert run["head_sha"] == os.environ["BUILD_SHA"]
+          assert json.load(open("build.json"))["tree"]["sha"] == json.load(open("target.json"))["tree"]["sha"]
+          print("Successful build matches the merged source")
+          PY
+
+      - name: Download and verify tested artifacts
+        run: |
+          gh run download "$BUILD_RUN_ID" --name ConnectedTextures-levipack --dir dist
+          gh run download "$BUILD_RUN_ID" --name CTM-Forge-apk --dir dist
+          python3 - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+          for name, key in [("ConnectedTextures.levipack", "MOD_SHA256"), ("CTM-Forge-17.apk", "APK_SHA256")]:
+              assert hashlib.sha256(Path("dist", name).read_bytes()).hexdigest() == os.environ[key]
+          with zipfile.ZipFile("dist/ConnectedTextures.levipack") as mod:
+              assert json.loads(mod.read("manifest.json"))["version"] == "1.6.2"
+              prefix = "resources/minecraft_resource_packs/ctm_defaults/"
+              blocks = json.loads(mod.read(prefix + "blocks.json"))
+              assert len(blocks) - 1 == 44
+              assert json.loads(mod.read(prefix + "manifest.template.json"))["header"]["version"] == [1, 0, 1]
+              for base in ("sandstone", "red_sandstone"):
+                  family = [base, "chiseled_" + base, "cut_" + base, "smooth_" + base]
+                  assert all(list(blocks).index(base) < list(blocks).index(child) for child in family[1:])
+                  assert len({blocks[b]["carried_textures"]["side"] for b in family}) == 4
+          with zipfile.ZipFile("dist/CTM-Forge-17.apk") as apk:
+              assert apk.read("assets/ConnectedTextures.levipack") == Path("dist/ConnectedTextures.levipack").read_bytes()
+          print("Verified both artifacts and the APK's embedded mod")
+          PY
+
+      - name: Create draft release and upload verified assets
+        run: |
+          python3 - <<'PY'
+          import json, os
+          notes = """Targeted compatibility update for normal and red sandstone variants appearing identical in the world and inventory.
+
+          Bundled resources and CTM Forge now explicitly preserve normal, chiseled, cut and smooth sandstone mappings, with base definitions before their variants. Custom variant rules are retained. Smooth sandstone keeps vanilla textures.
+
+          Downloads: Connected Textures mod **1.6.2** and CTM Forge **build 17**, still named **The Glass Has Unionized**. The APK includes the same mod as the standalone download.
+
+          Import the new mod, then force-stop and reopen LeviLauncher. Its bundled resource revision is updated automatically. Separately imported sandstone CTM packs need reconversion with build 17 and replacement of their old copies.
+
+          Python/Kotlin regression tests, native tests, and Android/native builds passed. Device rendering still needs confirmation; this release addresses the generated definitions without claiming an in-game verified diagnosis. Source: PR #14.
+          """
+          payload = {"tag_name": "v1.6.2", "target_commitish": os.environ["TARGET_SHA"], "name": "Connected Textures 1.6.2 — Sandstone variants", "body": notes, "draft": True, "prerelease": False}
+          with open("create.json", "w") as f:
+              json.dump(payload, f)
+          PY
+          gh api --method POST "repos/$GH_REPO/releases" --input create.json > draft.json
+          python3 - <<'PY'
+          import json, os
+          release = json.load(open("draft.json"))
+          assert release["draft"] and release["tag_name"] == "v1.6.2"
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"RELEASE_ID={release['id']}\n")
+          PY
+          gh release upload v1.6.2 dist/ConnectedTextures.levipack dist/CTM-Forge-17.apk
+
+      - name: Verify uploaded assets and publish as latest
+        run: |
+          # Draft tags do not resolve via /releases/tags; use the returned release ID.
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" > release.json
+          python3 - <<'PY'
+          import json, os
+          release = json.load(open("release.json"))
+          assert release["draft"] and not release["prerelease"]
+          assert release["target_commitish"] == os.environ["TARGET_SHA"]
+          assets = {a["name"]: a for a in release["assets"]}
+          expected = {"ConnectedTextures.levipack": os.environ["MOD_SHA256"], "CTM-Forge-17.apk": os.environ["APK_SHA256"]}
+          assert set(assets) == set(expected)
+          for name, digest in expected.items():
+              assert assets[name]["state"] == "uploaded"
+              assert assets[name]["digest"] == "sha256:" + digest
+          PY
+          gh api --method PATCH "repos/$GH_REPO/releases/$RELEASE_ID" -F draft=false -f make_latest=true > published.json
+          gh api "repos/$GH_REPO/git/ref/tags/v1.6.2" > tag.json
+          python3 - <<'PY'
+          import json, os
+          release = json.load(open("published.json"))
+          assert not release["draft"] and not release["prerelease"]
+          assert release["tag_name"] == "v1.6.2" and release["published_at"]
+          assert json.load(open("tag.json"))["object"]["sha"] == os.environ["TARGET_SHA"]
+          print(release["html_url"])
+          PY
