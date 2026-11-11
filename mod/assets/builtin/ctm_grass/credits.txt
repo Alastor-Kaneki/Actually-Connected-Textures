@@ -1,0 +1,5 @@
+Credits:
+Vanilla Tweaks: https://vanillatweaks.net/
+Bedrock Tweaks: https://bedrocktweaks.net/
+
+Bundled and made configurable for Connected Textures by Alastor.

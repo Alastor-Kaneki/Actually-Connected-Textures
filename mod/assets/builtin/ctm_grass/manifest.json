@@ -1,0 +1,37 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Connected Textures: Connected Grass",
+    "description": "Full grass, snowy grass, mycelium, path, podzol and nylium sides. Bundled with Connected Textures; use its Mod Menu settings.",
+    "uuid": "ee0c335b-1b42-5935-8e12-fb03d4fc3b1e",
+    "version": [
+      1,
+      0,
+      0
+    ],
+    "min_engine_version": [
+      1,
+      26,
+      20
+    ]
+  },
+  "modules": [
+    {
+      "type": "resources",
+      "uuid": "fbcf2f42-26e5-5864-82f7-eff579406a2c",
+      "version": [
+        1,
+        0,
+        0
+      ]
+    }
+  ],
+  "metadata": {
+    "authors": [
+      "VanillaTweaks",
+      "BedrockTweaks"
+    ],
+    "url": "https://bedrocktweaks.net/",
+    "product_type": "addon"
+  }
+}

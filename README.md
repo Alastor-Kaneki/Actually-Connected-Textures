@@ -10,7 +10,9 @@ LeviLauncher), plus the tools to make packs for it:
 | `ctm-forge/` | **CTM Forge**, the Android app: browse Modrinth / CurseForge / Planet Minecraft, convert on the phone, import into LeviLauncher |
 | `tools/` | Checks for converted packs, previews, `merge_packs.py`, and the scripts that build `converter/data` |
 
-Resource packs aren't in this repo: they belong to their authors.
+Converted third-party CTM packs aren't in this repo. The built-in terrain resources
+are adapted from the supplied Connected Grass pack by Vanilla Tweaks / Bedrock Tweaks;
+their credits are retained in each bundle.
 
 ## GitHub Actions
 
@@ -45,9 +47,13 @@ without the real key.
 ### Install
 
 1. Import `ConnectedTextures.levipack` in LeviLauncher and enable it.
-2. Import one of the converted `.mcpack` files and turn it on under
+2. Optional **Full Grass Sides** and **Whiter Snow** are included in mod **1.5.0**,
+   both **off by default**. Enable either in the Connected Textures Mod Menu, then
+   restart Minecraft. On **LeviLauncher 1.5.27 or newer**, enabled features load
+   automatically; no separate import or manual Global Resources activation is needed.
+3. For other CTM effects, import one of the converted `.mcpack` files and turn it on under
    Settings > Global Resources (or in a world's resource packs).
-3. Load a world. Glass, glass panes and the pack's other blocks connect.
+4. Load a world. Glass, glass panes and the pack's other blocks connect.
 
 Turn off **Connected Glass** in BedrockTools while using this. Both mods change
 the same glass faces.
@@ -61,11 +67,28 @@ game didn't keep the extra textures from the normal packs. Use the matching
 `*_direct.mcpack` from the fallback set instead. Those always hand the tiles to the
 mod, but glass shows a grid of tiles when the mod is off.
 
-`config/connected_textures.json` in the mod folder has four switches:
-`enabled`, `blocks` (full glass blocks), `panes` and `overlays` (OptiFine overlay
-textures drawn on top of the base block). The same four toggles also appear as a
+`config/connected_textures.json` in the mod folder has six switches:
+`enabled`, `blocks` (full glass blocks), `panes`, `overlays` (OptiFine overlay
+textures drawn on top of the base block), `connectedGrass` (default **false**) and
+`whiterSnow` (default **false**). The same toggles also appear as a
 **Connected Textures module in LeviLauncher's Mod Menu**, where you can change
 them in game; edits are written back to that JSON file.
+
+**Built-in terrain:** Full Grass Sides uses the supplied Connected Grass pack's full sides for grass, snowy grass,
+mycelium, dirt paths, podzol and both nylium types, preserving the supplied biome
+colors. These are the uploaded pack's full-side effects, not neighbor-based
+grass connections. **Whiter Snow** independently enables the supplied snow and
+powder-snow textures, snow golem, snowball, powder-snow bucket and freezing overlay.
+With Full Grass Sides on and Whiter Snow off, snowy grass keeps full sides using
+the active normal snow texture. With both off, the mod leaves terrain unchanged.
+
+After changing either terrain switch, **fully restart Minecraft through LeviLauncher**.
+The main module switch also disables the built-in terrain after a restart.
+The launcher automatically manages the bundled resources and removes their active
+copies when the mod is disabled. Existing user/world resource packs can override
+them. Disable the separately imported Connected Grass pack if it is active, since
+its own Whiter Snow textures would otherwise remain enabled. CTM Forge build **14**
+includes the same mod. Fire and soul-fire rules are unaffected.
 
 ### What's supported
 

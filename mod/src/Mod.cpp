@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "BuiltinPacks.hpp"
 #include "CtmLogic.hpp"
 #include "Game.hpp"
 #include "TextureSelection.hpp"
@@ -62,6 +63,8 @@ struct Config {
     bool blocks = true;
     bool panes = true;
     bool overlays = true;
+    bool connectedGrass = false;
+    bool whiterSnow = false;
 };
 Config g_cfg;
 std::atomic<bool> g_enabled{false};
@@ -600,10 +603,28 @@ void saveConfig() {
     if (g_modRoot.empty()) return;
     const std::string path = g_modRoot + "/config/connected_textures.json";
     if (FILE* f = std::fopen(path.c_str(), "wb")) {
-        std::fprintf(f, "{\n  \"enabled\": %s,\n  \"blocks\": %s,\n  \"panes\": %s,\n  \"overlays\": %s\n}\n",
+        std::fprintf(f, "{\n  \"enabled\": %s,\n  \"blocks\": %s,\n  \"panes\": %s,\n  \"overlays\": %s,\n  \"connectedGrass\": %s,\n  \"whiterSnow\": %s\n}\n",
                      g_cfg.enabled ? "true" : "false", g_cfg.blocks ? "true" : "false",
-                     g_cfg.panes ? "true" : "false", g_cfg.overlays ? "true" : "false");
+                     g_cfg.panes ? "true" : "false", g_cfg.overlays ? "true" : "false",
+                     g_cfg.connectedGrass ? "true" : "false", g_cfg.whiterSnow ? "true" : "false");
         std::fclose(f);
+    }
+}
+
+void prepareBuiltinPacks(bool enabled) {
+    if (g_modRoot.empty()) return;
+    static std::mutex mutex;
+    const std::lock_guard lock(mutex);
+    if (ctm::syncBuiltinPacks(g_modRoot, enabled, g_cfg.connectedGrass, g_cfg.whiterSnow)) {
+        std::string line = "Built-in terrain prepared: grass=";
+        line += enabled && g_cfg.connectedGrass ? "on" : "off";
+        line += ", whiter snow=";
+        line += enabled && g_cfg.whiterSnow ? "on" : "off";
+        line += ". Terrain setting changes apply after restarting Minecraft.";
+        status(line.c_str());
+    } else {
+        status("Could not prepare built-in terrain resources. Reimport the complete .levipack and restart Minecraft.");
+        LOGW("Failed to prepare bundled terrain resources");
     }
 }
 
@@ -611,24 +632,30 @@ void registerModMenu() {
     // Registered synchronously from PLMod_Enable, so the preloader attributes the
     // module to this mod (folder name "Connected Textures").
     const bool ok = pl::modmenu::ModuleBuilder("connectedtextures.main", "Connected Textures")
-        .description("OptiFine-style connected textures and overlays for Bedrock.")
+        .description("Connected textures, overlays and built-in terrain. Restart Minecraft after changing grass or snow, or turning built-in terrain off with the main switch.")
         .defaultEnabled(g_cfg.enabled)
         .onToggle([](std::string_view, bool on) {
             g_cfg.enabled = on;
             g_wantEnabled.store(on, std::memory_order_release);
             g_enabled.store(g_hooked && on, std::memory_order_release);
             saveConfig();
+            prepareBuiltinPacks(on);
         })
         .onConfigChanged([](std::string_view, std::string_view key, std::string_view value) {
             const bool on = value == "true" || value == "1";
             if (key == "blocks") g_cfg.blocks = on;
             else if (key == "panes") g_cfg.panes = on;
             else if (key == "overlays") g_cfg.overlays = on;
+            else if (key == "connectedGrass") g_cfg.connectedGrass = on;
+            else if (key == "whiterSnow") g_cfg.whiterSnow = on;
             saveConfig();
+            if (key == "connectedGrass" || key == "whiterSnow") prepareBuiltinPacks(g_cfg.enabled);
         })
         .config("blocks", "Full blocks", pl::modmenu::ConfigType::Toggle, g_cfg.blocks ? "true" : "false")
         .config("panes", "Panes", pl::modmenu::ConfigType::Toggle, g_cfg.panes ? "true" : "false")
         .config("overlays", "Overlays", pl::modmenu::ConfigType::Toggle, g_cfg.overlays ? "true" : "false")
+        .config("connectedGrass", "Full Grass Sides (restart game)", pl::modmenu::ConfigType::Toggle, g_cfg.connectedGrass ? "true" : "false")
+        .config("whiterSnow", "Whiter Snow (restart game)", pl::modmenu::ConfigType::Toggle, g_cfg.whiterSnow ? "true" : "false")
         .registerModule();
     if (!ok) LOGW("Mod Menu registration failed");
 }
@@ -646,10 +673,7 @@ void loadConfig(const char* root) {
         std::fclose(f);
     } else {
         ::mkdir(dir.c_str(), 0775);
-        if (FILE* w = std::fopen(path.c_str(), "wb")) {
-            std::fputs("{\n  \"enabled\": true,\n  \"blocks\": true,\n  \"panes\": true,\n  \"overlays\": true\n}\n", w);
-            std::fclose(w);
-        }
+        saveConfig();
         return;
     }
     auto flag = [&](const char* key, bool& out) {
@@ -667,6 +691,8 @@ void loadConfig(const char* root) {
     flag("blocks", g_cfg.blocks);
     flag("panes", g_cfg.panes);
     flag("overlays", g_cfg.overlays);
+    flag("connectedGrass", g_cfg.connectedGrass);
+    flag("whiterSnow", g_cfg.whiterSnow);
 }
 
 template <class Fn>
@@ -783,9 +809,12 @@ CTM_EXPORT bool PLMod_Load(JavaVM*, const PLModInfo* info) {
         g_modRoot = root;
         g_statusPath = std::string(root) + "/status.txt";
     }
-    if (!gameProcess()) return true;
-    status("Connected Textures 1.4.0 for Minecraft 1.26.60 / 1.26.62", true);
+    status("Connected Textures 1.5.0 for Minecraft 1.26.60 / 1.26.62", true);
     loadConfig(root);
+    // Must run before the launcher's bundled-pack sync, even if native CTM
+    // signatures are unavailable or the loader is preparing another process.
+    prepareBuiltinPacks(g_cfg.enabled);
+    if (!gameProcess()) return true;
     LOGI("loading (blocks=%d panes=%d enabled=%d)", g_cfg.blocks, g_cfg.panes, g_cfg.enabled);
     trySetup();
     if (!g_setupDone) {
@@ -806,6 +835,7 @@ CTM_EXPORT bool PLMod_Enable() {
     g_wantEnabled.store(true, std::memory_order_release);
     g_enabled.store(g_hooked && g_cfg.enabled, std::memory_order_release);
     registerModMenu();
+    prepareBuiltinPacks(g_cfg.enabled);
     LOGI("enabled=%d", g_enabled.load() ? 1 : 0);
     return true;
 }
@@ -813,6 +843,7 @@ CTM_EXPORT bool PLMod_Enable() {
 CTM_EXPORT bool PLMod_Disable() {
     g_wantEnabled.store(false, std::memory_order_release);
     g_enabled.store(false, std::memory_order_release);
+    prepareBuiltinPacks(false);
     pl::modmenu::unregisterModule("connectedtextures.main");
     return true;
 }
