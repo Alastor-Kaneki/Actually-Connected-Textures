@@ -1,0 +1,37 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Connected Textures: Whiter Snow",
+    "description": "Optional whiter snow blocks, snow golem, snowball, powder-snow bucket and freezing overlay. Use the Connected Textures Mod Menu switch.",
+    "uuid": "28601b4e-d592-54d3-8952-fb7b1766e34f",
+    "version": [
+      1,
+      0,
+      0
+    ],
+    "min_engine_version": [
+      1,
+      26,
+      20
+    ]
+  },
+  "modules": [
+    {
+      "type": "resources",
+      "uuid": "230ae46d-2e8b-52f1-b4c5-4a06b4f2542d",
+      "version": [
+        1,
+        0,
+        0
+      ]
+    }
+  ],
+  "metadata": {
+    "authors": [
+      "VanillaTweaks",
+      "BedrockTweaks"
+    ],
+    "url": "https://bedrocktweaks.net/",
+    "product_type": "addon"
+  }
+}
