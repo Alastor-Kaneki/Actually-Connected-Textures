@@ -105,8 +105,8 @@ The main module switch also disables all three built-in bundles after a restart.
 The launcher automatically manages the bundled resources and removes their active
 copies when the mod is disabled. Existing user/world resource packs can override
 them. Disable the separately imported Connected Grass pack if it is active, since
-its own Whiter Snow textures would otherwise remain enabled. CTM Forge build **15**
-includes the same mod. Fire and soul-fire rules are unaffected.
+its own Whiter Snow textures would otherwise remain enabled. CTM Forge build **16**
+(**The Glass Has Unionized**) includes the same mod 1.6.0. Fire and soul-fire rules are unaffected.
 
 ### What's supported
 
