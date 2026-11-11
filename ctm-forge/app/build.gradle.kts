@@ -30,8 +30,8 @@ android {
         applicationId = "com.alastor.ctmforge"
         minSdk = 28
         targetSdk = 36
-        versionCode = 15
-        versionName = "Overlay"
+        versionCode = 16
+        versionName = "The Glass Has Unionized"
     }
 
     signingConfigs {
