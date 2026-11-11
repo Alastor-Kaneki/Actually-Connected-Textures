@@ -1,0 +1,17 @@
+Continuity Default Connected Textures
+Original textures and rules by PepperCode1, from Continuity 3.0.1+26.3.
+https://github.com/PepperCode1/Continuity
+Licensed under GNU LGPL version 3 only. See LICENSE-LGPL-3.0.txt and LICENSE-GPL-3.0.txt.
+
+Bedrock conversion and bundling by Alastor, 2026-11-11.
+Changes: convert PNG tiles to CTM atlases; adapt names and rules for Bedrock;
+fix cut_sandstone's matchBlock spelling; restrict normal sandstone top rules to
+full blocks and use explicit same-texture neighbor families; omit Java-only
+resourceCondition checks. Adapted Continuity resources remain LGPL-3.0-only.
+Original editable textures and rules and the adapted rules are included in source/.
+See SOURCE.md for provenance, rebuild instructions and supported scope.
+
+Normal fallback textures: (c) Mojang AB. All rights reserved.
+Mojang/bedrock-samples v1.26.60.5, commit 15701fa9c13923f12662984c32c124327e40e3d3.
+https://github.com/Mojang/bedrock-samples
+https://www.minecraft.net/en-us/eula

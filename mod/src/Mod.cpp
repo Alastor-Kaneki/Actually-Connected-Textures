@@ -63,6 +63,7 @@ struct Config {
     bool blocks = true;
     bool panes = true;
     bool overlays = true;
+    bool defaultTextures = true;
     bool connectedGrass = false;
     bool whiterSnow = false;
 };
@@ -603,10 +604,10 @@ void saveConfig() {
     if (g_modRoot.empty()) return;
     const std::string path = g_modRoot + "/config/connected_textures.json";
     if (FILE* f = std::fopen(path.c_str(), "wb")) {
-        std::fprintf(f, "{\n  \"enabled\": %s,\n  \"blocks\": %s,\n  \"panes\": %s,\n  \"overlays\": %s,\n  \"connectedGrass\": %s,\n  \"whiterSnow\": %s\n}\n",
+        std::fprintf(f, "{\n  \"enabled\": %s,\n  \"blocks\": %s,\n  \"panes\": %s,\n  \"overlays\": %s,\n  \"defaultTextures\": %s,\n  \"connectedGrass\": %s,\n  \"whiterSnow\": %s\n}\n",
                      g_cfg.enabled ? "true" : "false", g_cfg.blocks ? "true" : "false",
                      g_cfg.panes ? "true" : "false", g_cfg.overlays ? "true" : "false",
-                     g_cfg.connectedGrass ? "true" : "false", g_cfg.whiterSnow ? "true" : "false");
+                     g_cfg.defaultTextures ? "true" : "false", g_cfg.connectedGrass ? "true" : "false", g_cfg.whiterSnow ? "true" : "false");
         std::fclose(f);
     }
 }
@@ -615,16 +616,18 @@ void prepareBuiltinPacks(bool enabled) {
     if (g_modRoot.empty()) return;
     static std::mutex mutex;
     const std::lock_guard lock(mutex);
-    if (ctm::syncBuiltinPacks(g_modRoot, enabled, g_cfg.connectedGrass, g_cfg.whiterSnow)) {
-        std::string line = "Built-in terrain prepared: grass=";
+    if (ctm::syncBuiltinPacks(g_modRoot, enabled, g_cfg.defaultTextures, g_cfg.connectedGrass, g_cfg.whiterSnow)) {
+        std::string line = "Built-in resources prepared: default CTM=";
+        line += enabled && g_cfg.defaultTextures ? "on" : "off";
+        line += ", grass=";
         line += enabled && g_cfg.connectedGrass ? "on" : "off";
         line += ", whiter snow=";
         line += enabled && g_cfg.whiterSnow ? "on" : "off";
-        line += ". Terrain setting changes apply after restarting Minecraft.";
+        line += ". Built-in setting changes apply after restarting Minecraft.";
         status(line.c_str());
     } else {
-        status("Could not prepare built-in terrain resources. Reimport the complete .levipack and restart Minecraft.");
-        LOGW("Failed to prepare bundled terrain resources");
+        status("Could not prepare built-in resources. Reimport the complete .levipack and restart Minecraft.");
+        LOGW("Failed to prepare bundled resources");
     }
 }
 
@@ -632,7 +635,7 @@ void registerModMenu() {
     // Registered synchronously from PLMod_Enable, so the preloader attributes the
     // module to this mod (folder name "Connected Textures").
     const bool ok = pl::modmenu::ModuleBuilder("connectedtextures.main", "Connected Textures")
-        .description("Connected textures, overlays and built-in terrain. Restart Minecraft after changing grass or snow, or turning built-in terrain off with the main switch.")
+        .description("Connected textures, overlays and built-in resources. Restart Minecraft after changing default textures, grass or snow, or disabling bundles with the main switch.")
         .defaultEnabled(g_cfg.enabled)
         .onToggle([](std::string_view, bool on) {
             g_cfg.enabled = on;
@@ -646,14 +649,16 @@ void registerModMenu() {
             if (key == "blocks") g_cfg.blocks = on;
             else if (key == "panes") g_cfg.panes = on;
             else if (key == "overlays") g_cfg.overlays = on;
+            else if (key == "defaultTextures") g_cfg.defaultTextures = on;
             else if (key == "connectedGrass") g_cfg.connectedGrass = on;
             else if (key == "whiterSnow") g_cfg.whiterSnow = on;
             saveConfig();
-            if (key == "connectedGrass" || key == "whiterSnow") prepareBuiltinPacks(g_cfg.enabled);
+            if (key == "defaultTextures" || key == "connectedGrass" || key == "whiterSnow") prepareBuiltinPacks(g_cfg.enabled);
         })
         .config("blocks", "Full blocks", pl::modmenu::ConfigType::Toggle, g_cfg.blocks ? "true" : "false")
         .config("panes", "Panes", pl::modmenu::ConfigType::Toggle, g_cfg.panes ? "true" : "false")
         .config("overlays", "Overlays", pl::modmenu::ConfigType::Toggle, g_cfg.overlays ? "true" : "false")
+        .config("defaultTextures", "Default Connected Textures (restart game)", pl::modmenu::ConfigType::Toggle, g_cfg.defaultTextures ? "true" : "false")
         .config("connectedGrass", "Full Grass Sides (restart game)", pl::modmenu::ConfigType::Toggle, g_cfg.connectedGrass ? "true" : "false")
         .config("whiterSnow", "Whiter Snow (restart game)", pl::modmenu::ConfigType::Toggle, g_cfg.whiterSnow ? "true" : "false")
         .registerModule();
@@ -691,6 +696,7 @@ void loadConfig(const char* root) {
     flag("blocks", g_cfg.blocks);
     flag("panes", g_cfg.panes);
     flag("overlays", g_cfg.overlays);
+    flag("defaultTextures", g_cfg.defaultTextures);
     flag("connectedGrass", g_cfg.connectedGrass);
     flag("whiterSnow", g_cfg.whiterSnow);
 }

@@ -39,13 +39,16 @@ class BuiltinAssetsTest(unittest.TestCase):
         for pack in ROOT.iterdir():
             doc = json.loads((pack / "manifest.json").read_text())
             self.assertEqual(doc["modules"][0]["type"], "resources")
-            self.assertEqual(doc["metadata"]["authors"], ["VanillaTweaks", "BedrockTweaks"])
+            defaults = pack.name == "ctm_defaults"
+            self.assertEqual(doc["metadata"]["authors"],
+                             ["PepperCode1", "Alastor"] if defaults else ["VanillaTweaks", "BedrockTweaks"])
             for entry in [doc["header"], *doc["modules"]]:
                 identity = str(UUID(entry["uuid"]))
                 self.assertNotIn(identity, ids)
                 self.assertNotEqual(identity, "670ab91e-1df0-49cd-a6b2-d9c62843c315")
                 ids.add(identity)
-            self.assertIn("https://bedrocktweaks.net/", (pack / "credits.txt").read_text())
+            self.assertIn("https://github.com/PepperCode1/Continuity" if defaults else "https://bedrocktweaks.net/",
+                          (pack / "credits.txt").read_text())
 
 
 if __name__ == "__main__":

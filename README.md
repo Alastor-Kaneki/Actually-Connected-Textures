@@ -10,9 +10,11 @@ LeviLauncher), plus the tools to make packs for it:
 | `ctm-forge/` | **CTM Forge**, the Android app: browse Modrinth / CurseForge / Planet Minecraft, convert on the phone, import into LeviLauncher |
 | `tools/` | Checks for converted packs, previews, `merge_packs.py`, and the scripts that build `converter/data` |
 
-Converted third-party CTM packs aren't in this repo. The built-in terrain resources
-are adapted from the supplied Connected Grass pack by Vanilla Tweaks / Bedrock Tweaks;
-their credits are retained in each bundle.
+The mod bundles the modern default resources from **Continuity 3.0.1+26.3** by
+PepperCode1 (LGPL-3.0-only), converted for the existing Bedrock renderer. The original
+texture sources, adapted rules and license texts are retained in the bundle. Optional
+terrain resources come from the supplied Connected Grass pack by Vanilla Tweaks /
+Bedrock Tweaks, with their credits retained. See [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## GitHub Actions
 
@@ -46,14 +48,17 @@ without the real key.
 
 ### Install
 
-1. Import `ConnectedTextures.levipack` in LeviLauncher and enable it.
-2. Optional **Full Grass Sides** and **Whiter Snow** are included in mod **1.5.0**,
-   both **off by default**. Enable either in the Connected Textures Mod Menu, then
-   restart Minecraft. On **LeviLauncher 1.5.27 or newer**, enabled features load
-   automatically; no separate import or manual Global Resources activation is needed.
-3. For other CTM effects, import one of the converted `.mcpack` files and turn it on under
-   Settings > Global Resources (or in a world's resource packs).
-4. Load a world. Glass, glass panes and the pack's other blocks connect.
+1. Import `ConnectedTextures.levipack` **1.6.0** in LeviLauncher and enable it.
+2. **Default Connected Textures** is **on by default**: clear/stained/tinted glass,
+   glass panes, bookshelves and sandstone connect without importing another pack.
+   On **LeviLauncher 1.5.27+**, the launcher automatically installs and activates the
+   bundled resources. No manual Global Resources activation is needed.
+3. **Full Grass Sides** and **Whiter Snow** remain separate options, both **off by
+   default**. All three options have switches in the Connected Textures Mod Menu.
+4. After updating the mod or changing a built-in option, fully stop LeviLauncher
+   (Android Settings > Apps > LeviLauncher > Force stop), reopen it and launch Minecraft.
+5. For additional CTM effects, import a converted `.mcpack` and enable it under
+   Settings > Global Resources (or a world's resource packs).
 
 Turn off **Connected Glass** in BedrockTools while using this. Both mods change
 the same glass faces.
@@ -67,12 +72,25 @@ game didn't keep the extra textures from the normal packs. Use the matching
 `*_direct.mcpack` from the fallback set instead. Those always hand the tiles to the
 mod, but glass shows a grid of tiles when the mod is off.
 
-`config/connected_textures.json` in the mod folder has six switches:
+`config/connected_textures.json` in the mod folder has seven switches:
 `enabled`, `blocks` (full glass blocks), `panes`, `overlays` (OptiFine overlay
-textures drawn on top of the base block), `connectedGrass` (default **false**) and
+textures drawn on top of the base block), `defaultTextures` (default **true**),
+`connectedGrass` (default **false**) and
 `whiterSnow` (default **false**). The same toggles also appear as a
 **Connected Textures module in LeviLauncher's Mod Menu**, where you can change
 them in game; edits are written back to that JSON file.
+
+**Built-in default textures:** Continuity's modern pack supplies 35 glass block/pane
+rules, 5 horizontal rules (bookshelves, cut/chiseled sandstone and their red versions),
+and 2 vertical side rules for normal/red sandstone. Normal sandstone connects beneath
+same-color normal sandstone blocks, slabs, double slabs, stairs or walls. The side
+rule changes full blocks only; smooth sandstone and slab/stair/wall artwork are not
+included. These are adapted resources, not the Java Continuity mod or its pane-culling
+models. See [source and adaptation notes](mod/assets/builtin/ctm_defaults/SOURCE.md).
+
+A higher-priority converted CTM pack can override these block aliases. For a plain
+texture pack that replaces these blocks, turn off **Default Connected Textures**;
+Continuity's Java `resourceCondition` checks and Programmer Art variants are not supported.
 
 **Built-in terrain:** Full Grass Sides uses the supplied Connected Grass pack's full sides for grass, snowy grass,
 mycelium, dirt paths, podzol and both nylium types, preserving the supplied biome
@@ -80,14 +98,14 @@ colors. These are the uploaded pack's full-side effects, not neighbor-based
 grass connections. **Whiter Snow** independently enables the supplied snow and
 powder-snow textures, snow golem, snowball, powder-snow bucket and freezing overlay.
 With Full Grass Sides on and Whiter Snow off, snowy grass keeps full sides using
-the active normal snow texture. With both off, the mod leaves terrain unchanged.
+the active normal snow texture. With both off, grass and snow keep their normal appearance.
 
-After changing either terrain switch, **fully restart Minecraft through LeviLauncher**.
-The main module switch also disables the built-in terrain after a restart.
+After changing any built-in switch, **fully stop and reopen LeviLauncher**.
+The main module switch also disables all three built-in bundles after a restart.
 The launcher automatically manages the bundled resources and removes their active
 copies when the mod is disabled. Existing user/world resource packs can override
 them. Disable the separately imported Connected Grass pack if it is active, since
-its own Whiter Snow textures would otherwise remain enabled. CTM Forge build **14**
+its own Whiter Snow textures would otherwise remain enabled. CTM Forge build **15**
 includes the same mod. Fire and soul-fire rules are unaffected.
 
 ### What's supported
@@ -181,7 +199,7 @@ converts offline; generated archives and source images are not checked into git.
 ```
 cd mod
 NDK=/path/to/android-ndk-r28c PL=/path/to/preloader-android/include sh build.sh
-python3 package.py    # -> mod/build/ConnectedTextures.levipack
+python3 package.py    # builds Continuity defaults and packages the .levipack
 ```
 
 `PL` is the `include` folder of [preloader-android](https://github.com/LiteLDev/preloader-android).

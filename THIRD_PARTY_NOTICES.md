@@ -61,3 +61,24 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Continuity default resources
+
+Mod 1.6.0 bundles the modern default connected-texture resources from
+**Continuity 3.0.1+26.3**, by **PepperCode1**, under **LGPL-3.0-only**.
+Upstream: https://github.com/PepperCode1/Continuity.
+
+The supplied JAR is identified by SHA-256
+`429fb0946118e86cce8ace8b57d07e1971088fb3f8115439bb0f2f12df14f511`.
+`mod/third_party/continuity-default-3.0.1+26.3.zip` retains the original modern
+textures and rules. `tools/build_builtin_continuity.py` creates the Bedrock atlases,
+fixes one `matchBlock` typo, restricts sandstone rules to full blocks with explicit
+same-texture neighbor families, and removes Java-only activation conditions.
+No Continuity Java code, Programmer Art resources or pane-culling models are used.
+
+The generated bundle includes the original source ZIP, adapted rule sources, credit
+and change notices, and both LGPL-3.0 and GPL-3.0 license texts. Adapted Continuity
+resources remain LGPL-3.0-only. See
+[the source and build notes](mod/assets/builtin/ctm_defaults/SOURCE.md).
+Vanilla fallback images retain the Mojang notice above and are copied into private
+paths; they do not override unrelated vanilla textures.

@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
     fs::create_directories(packs);
     fs::copy(argv[1], packs, fs::copy_options::recursive);
     std::vector<fs::path> manifest;
-    for (const char* folder : {"ctm_grass", "ctm_whiter_snow"}) {
+    for (const char* folder : {"ctm_grass", "ctm_whiter_snow", "ctm_defaults"}) {
         const auto path = packs / folder / "manifest.json";
         fs::rename(path, path.parent_path() / "manifest.template.json");
         manifest.push_back(path);
@@ -29,21 +29,26 @@ int main(int argc, char** argv) {
     fs::create_directories(packs / "other");
     std::ofstream(packs / "other/manifest.json") << "unrelated";
     for (bool enabled : {true, false}) {
-        for (bool grass : {true, false}) {
-            for (bool snow : {true, false}) {
-                assert(ctm::syncBuiltinPacks(root.string(), enabled, grass, snow));
-                assert(fs::exists(manifest[0]) == (enabled && grass));
-                assert(fs::exists(manifest[1]) == (enabled && snow));
-                assert(fs::exists(packs / "other/manifest.json"));
+        for (bool defaults : {true, false}) {
+            for (bool grass : {true, false}) {
+                for (bool snow : {true, false}) {
+                    assert(ctm::syncBuiltinPacks(root.string(), enabled, defaults, grass, snow));
+                    assert(fs::exists(manifest[0]) == (enabled && grass));
+                    assert(fs::exists(manifest[1]) == (enabled && snow));
+                    assert(fs::exists(manifest[2]) == (enabled && defaults));
+                    assert(fs::exists(packs / "other/manifest.json"));
+                }
             }
         }
     }
+    // Fresh installs and upgrades without the new key use defaults only.
+    assert(ctm::syncBuiltinPacks(root.string(), true, true, false, false));
+    assert(!fs::exists(manifest[0]) && !fs::exists(manifest[1]) && fs::exists(manifest[2]));
     // Restore after off, preserve content and timestamps on repeated launches.
-    assert(ctm::syncBuiltinPacks(root.string(), true, true, true));
+    assert(ctm::syncBuiltinPacks(root.string(), true, true, true, true));
     const auto old = fs::file_time_type::clock::now() - std::chrono::hours(24);
-    fs::last_write_time(manifest[0], old);
-    fs::last_write_time(manifest[1], old);
-    assert(ctm::syncBuiltinPacks(root.string(), true, true, true));
+    for (const auto& path : manifest) fs::last_write_time(path, old);
+    assert(ctm::syncBuiltinPacks(root.string(), true, true, true, true));
     for (const auto& path : manifest) {
         assert(fs::last_write_time(path) == old);
         std::string active, source;
@@ -53,15 +58,21 @@ int main(int argc, char** argv) {
     }
     // An upgrade replaces the template; the next load exposes the new version.
     std::ofstream(manifest[0].parent_path() / "manifest.template.json") << "new version";
-    assert(ctm::syncBuiltinPacks(root.string(), true, true, false));
+    assert(ctm::syncBuiltinPacks(root.string(), true, true, true, false));
     std::string text;
     assert(ctm::readPackFile(manifest[0].string(), text) && text == "new version");
     // A broken base bundle must not prevent disabling optional snow.
-    assert(ctm::syncBuiltinPacks(root.string(), true, false, true));
+    assert(ctm::syncBuiltinPacks(root.string(), true, true, false, true));
     fs::remove(manifest[0].parent_path() / "manifest.template.json");
-    assert(!ctm::syncBuiltinPacks(root.string(), true, true, false));
+    assert(!ctm::syncBuiltinPacks(root.string(), true, true, true, false));
     assert(!fs::exists(manifest[0]) && !fs::exists(manifest[1]));
-    assert(!ctm::syncBuiltinPacks("", true, true, true));
+    // Missing default resources still allow removing grass and snow manifests.
+    fs::remove(manifest[2].parent_path() / "manifest.template.json");
+    assert(!ctm::syncBuiltinPacks(root.string(), true, true, false, false));
+    assert(!fs::exists(manifest[0]) && !fs::exists(manifest[1]));
+    assert(ctm::syncBuiltinPacks(root.string(), false, true, true, true));
+    for (const auto& path : manifest) assert(!fs::exists(path));
+    assert(!ctm::syncBuiltinPacks("", true, true, true, true));
     fs::remove_all(root);
-    std::cout << "Built-in terrain activation tests OK\n";
+    std::cout << "Built-in resource activation tests OK\n";
 }
