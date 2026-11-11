@@ -108,6 +108,14 @@ them. Disable the separately imported Connected Grass pack if it is active, sinc
 its own Whiter Snow textures would otherwise remain enabled. CTM Forge build **17**
 (**The Glass Has Unionized**) includes the same mod 1.6.2. Fire and soul-fire rules are unaffected.
 
+**CTM Forge build 19:** the supplied Connected Copper Grates pack contained
+`copper_grate/1/45.PNG` while `tiles=0-46` requested `45.png`. This was the cause
+of its missing-tile warning and absent normal/waxed copper rules. Import now
+accepts an unambiguous case-insensitive file match, keeping exact matches first.
+Explicit `.PNG` references and mixed-case animation sidecars work too. Ambiguous
+case collisions remain rejected; missing-tile messages list the actual unresolved
+filenames. The original artwork and pack bytes are retained. Mod 1.7.0 is unchanged.
+
 **CTM Forge build 18 / mod 1.7.0:** copper-grate imports now recognize OptiFine's
 implicit filename targets (`copper_grate.properties` means `matchTiles=copper_grate`).
 Explicit `matchBlocks` / `matchTiles` always take precedence. Waxed copper blocks

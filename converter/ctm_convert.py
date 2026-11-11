@@ -259,6 +259,12 @@ class JavaPack:
         self.files = {k[len(self.root):]: v for k, v in self.files.items() if k.startswith(self.root)}
         self.overlays: list[str] = []
         self._apply_overlays()
+        # Preserve original spelling and exact-match precedence. A folded name
+        # shared by multiple entries is deliberately unresolved, never arbitrary.
+        self._case_paths: dict[str, str | None] = {}
+        for path in self.files:
+            key = path.lower()
+            self._case_paths[key] = None if key in self._case_paths else path
 
     def _apply_overlays(self):
         """Fusion's overrides folder and pack.mcmeta overlays that current Java versions load."""
@@ -281,8 +287,11 @@ class JavaPack:
                 self.overlays.append(d)
                 self.files.update(moved)
 
+    def resolve_path(self, path: str) -> str | None:
+        return path if path in self.files else self._case_paths.get(path.lower())
+
     def get(self, path: str) -> bytes | None:
-        return self.files.get(path)
+        return self.files.get(self.resolve_path(path))
 
     def mcmeta(self) -> dict:
         try:
@@ -292,7 +301,7 @@ class JavaPack:
             return {}
 
     def json(self, path: str):
-        data = self.files.get(path)
+        data = self.get(path)
         if data is None:
             return None
         try:
@@ -719,19 +728,21 @@ def expand_tile_list(spec: str) -> list[str]:
 def resolve_tile(pack: JavaPack, rule_dir: str, namespace: str, tok: str, base_path) -> str | None:
     if tok in ("<default>", "<skip>"):
         return base_path
-    name = tok[:-4] if tok.endswith(".png") else tok
+    has_extension = tok.lower().endswith(".png")
+    name, ext = (tok[:-4], tok[-4:]) if has_extension else (tok, ".png")
     cands = []
     if ":" in name:
         ns, rest = name.split(":", 1)
-        cands.append(f"assets/{ns}/textures/{rest}.png")
+        cands.append(f"assets/{ns}/textures/{rest}{ext}")
     elif "/" in name:
-        cands += [f"assets/{namespace}/{name}.png", f"assets/minecraft/{name}.png",
-                  f"{rule_dir}/{name}.png", f"assets/{namespace}/textures/{name}.png"]
+        cands += [f"assets/{namespace}/{name}{ext}", f"assets/minecraft/{name}{ext}",
+                  f"{rule_dir}/{name}{ext}", f"assets/{namespace}/textures/{name}{ext}"]
     else:
-        cands += [f"{rule_dir}/{name}.png", f"assets/minecraft/textures/block/{name}.png"]
+        cands += [f"{rule_dir}/{name}{ext}", f"assets/minecraft/textures/block/{name}{ext}"]
     for c in cands:
-        if pack.get(c) is not None:
-            return c
+        resolved = pack.resolve_path(c)
+        if resolved is not None:
+            return resolved
     return None
 
 
@@ -832,7 +843,10 @@ def read_rules(pack: JavaPack, log: list[str]) -> list[Rule]:
         tile_paths = [("<skip>" if overlay and t == "<skip>"
                        else resolve_tile(pack, rule_dir, namespace, t, base_path)) for t in toks]
         if any(t is None for t in tile_paths) or not tile_paths:
-            log.append(f"skip {path}: missing tile images")
+            missing = [t if t.lower().endswith(".png") or t.startswith("<") else t + ".png"
+                       for t, image in zip(toks, tile_paths) if image is None]
+            detail = ", ".join(missing[:8]) + (f" (+{len(missing) - 8} more)" if len(missing) > 8 else "")
+            log.append(f"skip {path}: missing tile images: {detail or 'no tiles listed'} (not found or ambiguous filename case)")
             continue
         try:
             r.tiles = [skipped_tex() if t == "<skip>" else load_tex(pack, t) for t in tile_paths]

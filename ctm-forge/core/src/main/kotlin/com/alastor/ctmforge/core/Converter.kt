@@ -291,16 +291,18 @@ object Converter {
 
         fun resolveTile(ruleDir: String, namespace: String, tok: String, basePath: String?): String? {
             if (tok == "<default>" || tok == "<skip>") return basePath
-            val name = if (tok.endsWith(".png")) tok.dropLast(4) else tok
+            val hasExtension = tok.endsWith(".png", ignoreCase = true)
+            val name = if (hasExtension) tok.dropLast(4) else tok
+            val ext = if (hasExtension) tok.takeLast(4) else ".png"
             val cands = when {
-                ':' in name -> listOf("assets/${name.substringBefore(':')}/textures/${name.substringAfter(':')}.png")
+                ':' in name -> listOf("assets/${name.substringBefore(':')}/textures/${name.substringAfter(':')}$ext")
                 '/' in name -> listOf(
-                    "assets/$namespace/$name.png", "assets/minecraft/$name.png",
-                    "$ruleDir/$name.png", "assets/$namespace/textures/$name.png",
+                    "assets/$namespace/$name$ext", "assets/minecraft/$name$ext",
+                    "$ruleDir/$name$ext", "assets/$namespace/textures/$name$ext",
                 )
-                else -> listOf("$ruleDir/$name.png", "assets/minecraft/textures/block/$name.png")
+                else -> listOf("$ruleDir/$name$ext", "assets/minecraft/textures/block/$name$ext")
             }
-            return cands.firstOrNull { pack.get(it) != null }
+            return cands.firstNotNullOfOrNull { pack.resolvePath(it) }
         }
 
         fun mainTexturePath(block: String): String? =
@@ -365,7 +367,11 @@ object Converter {
                 val toks = expandTileList(props["tiles"] ?: "")
                 val tilePaths = toks.map { if (overlay && it == "<skip>") "<skip>" else resolveTile(ruleDir, namespace, it, basePath) }
                 if (tilePaths.isEmpty() || tilePaths.any { it == null }) {
-                    log += "skip $path: missing tile images"
+                    val missing = toks.filterIndexed { index, _ -> tilePaths[index] == null }.map {
+                        if (it.endsWith(".png", ignoreCase = true) || it.startsWith("<")) it else "$it.png"
+                    }
+                    val detail = missing.take(8).joinToString(", ") + if (missing.size > 8) " (+${missing.size - 8} more)" else ""
+                    log += "skip $path: missing tile images: ${detail.ifEmpty { "no tiles listed" }} (not found or ambiguous filename case)"
                     continue
                 }
                 try {

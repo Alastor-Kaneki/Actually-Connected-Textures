@@ -30,6 +30,52 @@ class CopperGrates(unittest.TestCase):
                 for y in range(5, 11): im.putpixel((x, y), (0, 0, 0, 0))
         b = io.BytesIO(); im.save(b, format='PNG'); return b.getvalue()
 
+    def test_uppercase_tile_extension_matches_the_reported_zip(self):
+        d = 'assets/minecraft/optifine/ctm/copper_grate'
+        entries = {}
+        for stage, block in enumerate(STAGES, 1):
+            entries[f'{d}/{stage}/copper_grate.properties'] = f'method=ctm\ntiles=0-46\nmatchBlocks=waxed_{block} {block}'
+            for tile in range(47):
+                extension = 'PNG' if stage == 1 and tile == 45 else 'png'
+                entries[f'{d}/{stage}/{tile}.{extension}'] = self.image((tile, stage, 3, 255))
+        result, files = self.run_pack(entries)
+        self.assertEqual(set(STAGES + ['waxed_' + s for s in STAGES]), set(result['blocks']))
+        self.assertEqual([], result['log'])
+        sheets = [p for p in files if '/ctm-8x6-47/' in p and p.endswith('.png')]
+        for path in sheets:
+            im = Image.open(io.BytesIO(files[path]))
+            self.assertEqual(45, im.getpixel((5 * 16, 5 * 16))[0])
+            self.assertEqual(0, im.getpixel((5 * 16 + 7, 5 * 16 + 7))[3])
+
+    def test_exact_spelling_wins_ambiguous_case_fails_and_missing_name_is_reported(self):
+        d = 'assets/minecraft/optifine/ctm/copper_grate/1'
+        props = 'matchBlocks=copper_grate\nmethod=fixed\ntiles=45'
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); folder = root / d; folder.mkdir(parents=True)
+            (folder / 'copper_grate.properties').write_text(props)
+            (folder / '45.PNG').write_bytes(self.image((1, 0, 0, 255)))
+            (folder / '45.PnG').write_bytes(self.image((2, 0, 0, 255)))
+            log = []; self.assertEqual([], ctm.read_rules(ctm.JavaPack(root), log))
+            self.assertIn('45.png', log[-1]); self.assertIn('ambiguous', log[-1])
+            (folder / '45.png').write_bytes(self.image((3, 0, 0, 255)))
+            pack = ctm.JavaPack(root)
+            self.assertEqual(f'{d}/45.png', pack.resolve_path(f'{d}/45.png'))
+            rules = ctm.read_rules(pack, [])
+            self.assertEqual((3, 0, 0, 255), rules[0].tiles[0].first.getpixel((0, 0)))
+            (folder / 'copper_grate.properties').write_text(props.replace('tiles=45', 'tiles=45.PNG'))
+            self.assertEqual((1, 0, 0, 255), ctm.read_rules(ctm.JavaPack(root), [])[0].tiles[0].first.getpixel((0, 0)))
+            for name in ('45.png', '45.PNG', '45.PnG'): (folder / name).unlink()
+            log = []; self.assertEqual([], ctm.read_rules(ctm.JavaPack(root), log))
+            self.assertIn('45.PNG', log[-1])
+
+    def test_uppercase_tile_keeps_animation_metadata(self):
+        d = 'assets/minecraft/optifine/ctm/grates'
+        strip = Image.new('RGBA', (16, 32), (12, 34, 56, 255)); b = io.BytesIO(); strip.save(b, format='PNG')
+        _, files = self.run_pack({f'{d}/45.PNG': b.getvalue(), f'{d}/45.png.MCMETA': '{"animation":{"frametime":3}}',
+                                 f'{d}/a.properties': 'matchBlocks=copper_grate\nmethod=fixed\ntiles=45'})
+        flips = json.loads(files['textures/flipbook_textures.json'])
+        self.assertTrue(any(f['ticks_per_frame'] == 3 and len(f['frames']) == 2 for f in flips))
+
     def test_implicit_names_convert_all_eight_states_and_keep_holes(self):
         d = 'assets/minecraft/optifine/ctm'
         entries = {f'{d}/0.png': self.image()}
