@@ -1,0 +1,120 @@
+name: Publish tested v1.5.0
+
+on:
+  push:
+    branches: ["release/publish-v1.5.0"]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-connected-textures-v1.5.0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN_ID: "42936687843"
+      BUILD_SHA: b262bf91a7ae36413c881e3ca7bd749fa9d068a4
+      TARGET_SHA: ad672970afc4e36753e30fcce50bc118fededb3a
+    steps:
+      - name: Verify tested build and merged release source
+        run: |
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN_ID" > run.json
+          gh api "repos/$GH_REPO/git/commits/$BUILD_SHA" > build.json
+          gh api "repos/$GH_REPO/git/commits/$TARGET_SHA" > target.json
+          python3 - <<'PY'
+          import json, os
+          run = json.load(open("run.json"))
+          assert run["status"] == "completed" and run["conclusion"] == "success"
+          assert run["head_sha"] == os.environ["BUILD_SHA"]
+          assert json.load(open("build.json"))["tree"]["sha"] == json.load(open("target.json"))["tree"]["sha"]
+          print("Release source matches the successful build")
+          PY
+
+      - name: Download the tested mod and APK
+        run: |
+          gh run download "$BUILD_RUN_ID" --name ConnectedTextures-levipack --dir dist
+          gh run download "$BUILD_RUN_ID" --name CTM-Forge-apk --dir dist
+
+      - name: Verify exact artifact bytes and bundled mod
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, zipfile
+          from pathlib import Path
+          expected = {
+              "ConnectedTextures.levipack": "f9027b09e24d4152ba251ade2b82b0e03a177dc1b81df2ca8619ba82813af4ac",
+              "CTM-Forge-14.apk": "22eb98daebf87b3844549c2f6be72d493932fa61c003dd3cf7ffd3942b7339eb",
+          }
+          for name, digest in expected.items():
+              assert hashlib.sha256((Path("dist") / name).read_bytes()).hexdigest() == digest, name
+          with zipfile.ZipFile("dist/ConnectedTextures.levipack") as mod:
+              manifest = json.loads(mod.read("manifest.json"))
+              assert manifest["version"] == "1.5.0"
+              assert "both off by default" in manifest["description"]
+          with zipfile.ZipFile("dist/CTM-Forge-14.apk") as apk:
+              assert apk.read("assets/ConnectedTextures.levipack") == Path("dist/ConnectedTextures.levipack").read_bytes()
+          print("Both assets verified; APK contains the identical mod")
+          PY
+
+      - name: Prepare release notes
+        run: |
+          cat > notes.md <<'NOTES'
+          Connected Textures 1.5.0 and CTM Forge build 14 (version name: Overlay).
+
+          ## Included
+          - Optional **Full Grass Sides** and **Whiter Snow**, built into the mod.
+          - Separate switches under **Mod Menu → Connected Textures**, both **off by default**.
+          - Full sides for grass, snowy grass, mycelium, paths, podzol and both nylium types, with the supplied biome colors.
+          - Optional snow/powder-snow textures, snow golem, snowball, powder-snow bucket and freezing overlay.
+          - The latest custom-pack creator, animation handling and biome/neighbor/block-below texture rules. Existing purple-fire rules are preserved.
+          - CTM Forge 14 includes the same mod attached to this release.
+
+          ## Installation and restarting
+          Import ConnectedTextures.levipack in LeviLauncher. Built-in terrain requires LeviLauncher 1.5.27 or newer; native CTM targets Minecraft 1.26.60 / 1.26.62 on arm64 Android.
+          Enable the terrain effects you want in Mod Menu. No separate resource-pack import is needed for these built-in effects. Disable the standalone Connected Grass pack if active so it does not override the switches.
+
+          After updating the mod or changing terrain settings, fully close Minecraft, **Force stop LeviLauncher in Android app settings**, then reopen it and launch.
+          A crash saying `BootstrapConfig::initialize() should only be called once` indicates repeated initialization; fully restarting the launcher clears the previous process.
+
+          ## Validation and credits
+          Published from the successful CI build of the merged source: native CTM/toggle tests, resource checks, converter/Android tests, arm64 mod build and APK build passed. APK and mod hashes were checked before publishing. In-game visuals have not been independently verified on a device.
+          Terrain assets: Vanilla Tweaks and Bedrock Tweaks; credits are retained in the bundles.
+
+          [Source changes](https://github.com/Alastor-Kaneki/Actually-Connected-Textures/compare/v1.2.1...v1.5.0)
+          NOTES
+
+      - name: Create draft with both verified assets
+        run: |
+          if gh release view v1.5.0 >/dev/null 2>&1; then
+            echo "Release v1.5.0 already exists; refusing to replace it."
+            exit 1
+          fi
+          gh release create v1.5.0 --target "$TARGET_SHA" --draft \
+            --title "Connected Textures 1.5.0 / CTM Forge 14" --notes-file notes.md \
+            dist/ConnectedTextures.levipack dist/CTM-Forge-14.apk
+
+      - name: Verify uploads and publish as latest
+        run: |
+          gh api "repos/$GH_REPO/releases/tags/v1.5.0" > release.json
+          python3 - <<'PY'
+          import json, os
+          release = json.load(open("release.json"))
+          assert release["draft"] and not release["prerelease"]
+          assert release["target_commitish"] == os.environ["TARGET_SHA"]
+          assets = {a["name"]: a for a in release["assets"]}
+          expected = {
+              "ConnectedTextures.levipack": "f9027b09e24d4152ba251ade2b82b0e03a177dc1b81df2ca8619ba82813af4ac",
+              "CTM-Forge-14.apk": "22eb98daebf87b3844549c2f6be72d493932fa61c003dd3cf7ffd3942b7339eb",
+          }
+          assert set(assets) == set(expected)
+          for name, digest in expected.items():
+              assert assets[name]["state"] == "uploaded"
+              assert assets[name]["digest"] == "sha256:" + digest
+          PY
+          gh release edit v1.5.0 --draft=false --latest
