@@ -42,11 +42,12 @@ inline bool setBuiltinPack(const std::string& root, const char* folder, bool ena
     return ok;
 }
 
-inline bool syncBuiltinPacks(const std::string& root, bool enabled, bool grass, bool whiterSnow) {
-    // Always process both: failure preparing one must not leave the other enabled.
+inline bool syncBuiltinPacks(const std::string& root, bool enabled, bool defaults, bool grass, bool whiterSnow) {
+    // Always process all bundles: a failure must not leave another enabled.
+    const bool defaultsOk = setBuiltinPack(root, "ctm_defaults", enabled && defaults);
     const bool grassOk = setBuiltinPack(root, "ctm_grass", enabled && grass);
     const bool snowOk = setBuiltinPack(root, "ctm_whiter_snow", enabled && whiterSnow);
-    return grassOk && snowOk;
+    return defaultsOk && grassOk && snowOk;
 }
 
 }  // namespace ctm
