@@ -39,6 +39,7 @@ class BuiltinAssetsTest(unittest.TestCase):
         for pack in ROOT.iterdir():
             doc = json.loads((pack / "manifest.json").read_text())
             self.assertEqual(doc["modules"][0]["type"], "resources")
+            self.assertNotIn("product_type", doc["metadata"])
             defaults = pack.name == "ctm_defaults"
             self.assertEqual(doc["metadata"]["authors"],
                              ["PepperCode1", "Alastor"] if defaults else ["VanillaTweaks", "BedrockTweaks"])
