@@ -1768,7 +1768,6 @@ def convert(src: Path, out: Path, name: str | None, slug: str | None, direct: bo
                             f"LeviLauncher mod." + (f" Original: {desc}" if desc else "")),
             "uuid": str(uuid.uuid5(ns, "header")), "version": [1, 0, 0], "min_engine_version": [1, 21, 120]},
         "modules": [{"type": "resources", "uuid": str(uuid.uuid5(ns, "resources")), "version": [1, 0, 0]}],
-        "metadata": {"product_type": "addon"},
     }, indent=1).encode()
     icon = pack.get("pack.png")
     if icon:

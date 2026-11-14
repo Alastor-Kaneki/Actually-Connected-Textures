@@ -190,7 +190,6 @@ object PackCreator {
                 "name" to JsonPrimitive(project.name.trim()),
                 "description" to JsonPrimitive(project.description.ifBlank { "Created with CTM Forge. Requires the Connected Textures LeviLauncher mod." }),
             )),
-            "metadata" to buildJsonObject { put("product_type", "addon") },
         )).toString().toByteArray()
         return ConversionResult(result.name, result.slug, result.direct, result.headerUuid, result.version,
             output.toSortedMap(), result.blocks, result.methods, result.rules, result.log, result.sheets, result.animated)

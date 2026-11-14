@@ -78,6 +78,7 @@ class PackCreatorTest {
         assertNotEquals(a.headerUuid, c.headerUuid)
         assertEquals(listOf(1, 0, 2), b.version)
         val manifest = Json.parseToJsonElement(b.files.getValue("manifest.json").decodeToString()).jsonObject
+        assertFalse("product_type" in manifest["metadata"]?.jsonObject.orEmpty())
         assertEquals("Renamed", manifest.getValue("header").jsonObject.getValue("name").jsonPrimitive.content)
     }
 }

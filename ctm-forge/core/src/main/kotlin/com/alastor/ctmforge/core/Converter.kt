@@ -970,7 +970,6 @@ object Converter {
                     "uuid" to JsonPrimitive(Uuid5.of(ns, "resources").toString()),
                     "version" to version,
                 )))),
-                "metadata" to JsonObject(mapOf("product_type" to JsonPrimitive("addon"))),
             )))
             pack.get("pack.png")?.takeIf { it.isNotEmpty() }?.let { icon ->
                 try {
